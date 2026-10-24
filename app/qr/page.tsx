@@ -10,11 +10,12 @@ import PrintButton from "./print-button";
 import "./qr.css";
 
 export const metadata = { title: "기기별 QR 안내문 | TMI 세탁실" };
+export const dynamic = "force-dynamic";
 
 export default async function QrPage() {
   const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+  const host = requestHeaders.get("host") ?? "localhost:5173";
+  const protocol = /^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? "http" : "https";
   const origin = `${protocol}://${host}`;
   const codes = await Promise.all(MACHINES.map(async (machine) => {
     const url = `${origin}/?machine=${machine.id}`;
