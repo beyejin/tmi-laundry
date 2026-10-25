@@ -15,7 +15,7 @@
     {
       "binding": "DB",
       "database_name": "tmi-laundry",
-      "database_id": "00000000-0000-4000-8000-000000000000",
+      "database_id": "456c201b-502b-4c1e-b8e8-24569ebccb75",
       "migrations_dir": "drizzle"
     }
   ],
