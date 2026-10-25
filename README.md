@@ -2,6 +2,12 @@
 
 한 층의 세탁기 2대와 건조기 1대에 붙인 QR을 스캔해 시작을 등록하고, 모두가 같은 남은 시간을 확인하는 시범 운영 웹입니다.
 
+## 배포 주소
+
+- [세탁실 현황](https://tmi-laundry.hanroona8844.workers.dev/)
+- [기기별 QR 안내문](https://tmi-laundry.hanroona8844.workers.dev/qr)
+- [GitHub 저장소](https://github.com/beyejin/tmi-laundry)
+
 ## 이용 방법
 
 1. `/qr`의 안내문 3장을 인쇄해 해당 기기에 붙입니다.
