@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { Check, Info, QrCode, RefreshCw, WashingMachine, Wind, WifiOff, X } from "lucide-react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -101,8 +100,8 @@ export default function Home() {
     <>
       <a className="skip-link" href="#machine-status">기기 현황으로 바로 가기</a>
       <HStack as="header" hAlign="between" vAlign="center" className="site-header">
-        <Link className="brand" href="/" onClick={() => selectMachine(null)} aria-label="TMI 세탁실 전체 현황"><WashingMachine size={23} strokeWidth={1.8} /><span>TMI 세탁실</span></Link>
-        <Link className="header-link" href="/qr"><QrCode size={17} />QR 안내문</Link>
+        <a className="brand" href="/" aria-label="TMI 세탁실 전체 현황"><WashingMachine size={23} strokeWidth={1.8} /><span>TMI 세탁실</span></a>
+        <a className="header-link" href="/qr"><QrCode size={17} />QR 안내문</a>
       </HStack>
 
       <AppShell height="auto" variant="wash" mobileNav={false} contentPadding={0} className="page-shell">

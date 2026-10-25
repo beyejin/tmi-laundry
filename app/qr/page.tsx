@@ -1,5 +1,4 @@
 import QRCode from "qrcode";
-import Link from "next/link";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -25,7 +24,7 @@ export default async function QrPage() {
   return (
     <AppShell height="auto" variant="wash" mobileNav={false} contentPadding={0} className="qr-page">
       <HStack as="header" hAlign="between" vAlign="center" className="qr-header">
-        <Link href="/" className="qr-back">← 세탁실 현황</Link>
+        <a href="/" className="qr-back">← 세탁실 현황</a>
         <span className="qr-wordmark">TMI 세탁실</span>
       </HStack>
       <VStack as="section" gap={3} className="qr-intro">
@@ -43,7 +42,7 @@ export default async function QrPage() {
           <p className="qr-label-note">사용자가 등록한 예상 시간을 공유해요.<br />실제 상태는 현장에서 확인해 주세요.</p>
           <p className="qr-address">{machine.url}</p>
           <HStack hAlign="center" gap={3} className="qr-actions">
-            <Link href={`/?machine=${machine.id}`}>등록 화면 열기</Link>
+            <a href={`/?machine=${machine.id}`}>등록 화면 열기</a>
             <a href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(machine.svg)}`} download={`tmi-${machine.id}-qr.svg`}>QR 저장</a>
           </HStack>
         </article>)}
