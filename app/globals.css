@@ -204,3 +204,21 @@ h1, h2, p { margin: 0; }
 .page-shell main { background: transparent; border-radius: 0; overflow: visible; }
 
 .page-heading p, .floor-label, .summary-label, .connection-label, .sync-time, .refresh-button, .board-heading > span, .tile-status, .tile-time-caption, .tile-default, .board-note, .detail-eyebrow, .detail-status, .detail-readout, .start-instruction, .detail-footer > span, .clear-button, .site-footer, .connection-warning p, .connection-warning button, .notification, .empty-selection p, .minutes-field small { font-size: var(--font-size-sm); }
+
+.location-picker { margin-bottom: var(--spacing-6); padding: var(--spacing-5); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-container); background: var(--color-background-surface); }
+.location-fields { --location-columns: repeat(2, minmax(0, 1fr)); max-width: calc(var(--spacing-10) * 18); }
+.location-fields > *, .floor-picker { min-width: 0; }
+.location-label { color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); white-space: nowrap; }
+.location-picker .astryx-segmented-control-item { min-height: var(--spacing-11); }
+.location-caption { border-top: var(--border-width) solid var(--color-border); padding-top: var(--spacing-4); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
+.location-empty { padding: var(--spacing-12) var(--spacing-5); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-container); background: var(--color-background-surface); text-align: center; }
+.location-empty h2 { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
+.location-empty p { font-size: var(--font-size-sm); color: var(--color-text-secondary); line-height: 1.8; }
+.location-empty > svg { color: var(--color-text-secondary); }
+@media (max-width: 30rem) {
+  .location-picker { padding: var(--spacing-4); }
+  .location-fields { --location-columns: minmax(0, 1fr); gap: var(--spacing-4); }
+  .floor-picker { flex-wrap: wrap; gap: var(--spacing-2); }
+  .floor-picker > .astryx-segmented-control { flex: 1; }
+  .page-heading .floor-label { position: static; }
+}

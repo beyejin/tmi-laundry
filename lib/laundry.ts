@@ -1,12 +1,43 @@
-export const MACHINES = [
+export const BUILDINGS = [2, 3] as const;
+export const WINGS = [
+  { id: "women", name: "여자" },
+  { id: "men", name: "남자" },
+] as const;
+
+export type Location = {
+  id: string;
+  building: (typeof BUILDINGS)[number];
+  wing: (typeof WINGS)[number]["id"];
+  floor: number;
+  label: string;
+};
+
+export const LOCATIONS: readonly Location[] = [
+  { id: "h3-women-2", building: 3, wing: "women", floor: 2, label: "3생활관 여자 2층" },
+  { id: "h3-women-3", building: 3, wing: "women", floor: 3, label: "3생활관 여자 3층" },
+  { id: "h3-women-4", building: 3, wing: "women", floor: 4, label: "3생활관 여자 4층" },
+  { id: "h3-women-5", building: 3, wing: "women", floor: 5, label: "3생활관 여자 5층" },
+];
+
+const EQUIPMENT = [
   { id: "washer-1", name: "세탁기 1", type: "washer", defaultMinutes: 36 },
   { id: "washer-2", name: "세탁기 2", type: "washer", defaultMinutes: 36 },
   { id: "dryer-1", name: "건조기 1", type: "dryer", defaultMinutes: 45 },
 ] as const;
 
+export const MACHINES = LOCATIONS.flatMap((location) => EQUIPMENT.map((machine) => ({
+  ...machine,
+  id: `${location.id}-${machine.id}`,
+  locationId: location.id,
+})));
+
 export type MachineId = (typeof MACHINES)[number]["id"];
 export type Command = { action: "start" | "adjust" | "clear"; expectedVersion: number; minutes?: number };
 export type StateRow = { id: string; ends_at: number | null; updated_at: number; version: number };
+
+export function findLocation(id: string) {
+  return LOCATIONS.find((location) => location.id === id);
+}
 
 export function findMachine(id: string) {
   return MACHINES.find((machine) => machine.id === id);
@@ -36,7 +67,8 @@ export function stateSnapshot(rows: StateRow[], now: number) {
 }
 
 export function mutationQuery(id: MachineId, command: Command, now: number) {
-  const machine = findMachine(id)!;
+  const machine = findMachine(id);
+  if (!machine) throw new Error("등록되지 않은 기기예요.");
   const endsAt = command.action === "clear" ? null : now + (command.action === "start" ? machine.defaultMinutes : command.minutes!) * 60_000;
   if (command.expectedVersion === 0) {
     return {

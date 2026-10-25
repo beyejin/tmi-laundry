@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "TMI 세탁실 | 남은 시간을 한눈에",
-  description: "세탁기 2대와 건조기 1대의 예상 남은 시간을 확인하고, 기기의 QR로 시작 시간을 등록하세요. TMI 한 층 시범 운영 웹입니다.",
+  description: "2생활관과 3생활관의 남녀 구역, 층별 세탁실을 선택해 예상 남은 시간을 확인하고 기기의 QR로 시작 시간을 등록하세요.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 
