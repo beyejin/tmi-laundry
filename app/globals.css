@@ -205,7 +205,8 @@ h1, h2, p { margin: 0; }
 
 .empty-first-bar { margin-bottom: var(--spacing-4); }
 .empty-first-summary { color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: 1.5; }
-.machine-tile.status-unknown.is-available { --status-color: var(--color-text-green); --status-background: var(--color-background-surface); --status-border: var(--color-border-green); }
+.machine-tile.status-unknown.is-available { --status-color: var(--color-text-green); --status-background: var(--color-background-surface); --status-border: var(--color-border-green); word-break: keep-all; }
+.machine-tile.is-available .tile-status { flex-wrap: wrap; justify-content: center; line-height: 1.45; text-align: center; max-width: 100%; }
 .detail-status.is-available { --status-color: var(--color-text-green); --status-background: var(--color-background-green); --status-border: var(--color-border-green); }
 
 .page-heading p, .floor-label, .summary-label, .connection-label, .sync-time, .refresh-button, .board-heading > span, .tile-status, .tile-time-caption, .tile-default, .board-note, .detail-eyebrow, .detail-status, .detail-readout, .start-instruction, .detail-footer > span, .clear-button, .site-footer, .connection-warning p, .connection-warning button, .notification, .empty-selection p, .minutes-field small { font-size: var(--font-size-sm); }
