@@ -13,6 +13,9 @@ import { BUILDINGS, WINGS, LOCATIONS, findLocation, findMachine } from "@/lib/la
 import { useLaundry, type Machine } from "@/hooks/use-laundry";
 import { countAvailable, orderMachines, type MachineOrder } from "@/app/proto/empty-first";
 import { EmptyFirstBar } from "@/app/proto/empty-first-bar";
+import { minutesUntil } from "@/app/proto/done-alert";
+import { DoneAlertButton } from "@/app/proto/done-alert-button";
+import { useDoneAlerts } from "@/app/proto/use-done-alerts";
 
 type DialogState = { machine: Machine; action: "adjust" | "clear" };
 type MachineStatus = "unknown" | "running" | "finished";
@@ -49,9 +52,18 @@ export default function Home() {
   const [fromQr, setFromQr] = useState(false);
   const [proto, setProto] = useState(false);
   const [sortMode, setSortMode] = useState<MachineOrder>("available");
+  const [fastDemo, setFastDemo] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [minutes, setMinutes] = useState("");
   const [actionError, setActionError] = useState("");
+  const { alerts: doneAlerts, permission: alertPermission, pending: alertPending, schedule: scheduleDoneAlert, cancel: cancelDoneAlert } = useDoneAlerts({
+    enabled: proto,
+    fast: fastDemo,
+    loaded,
+    machines: allMachines,
+    currentTime,
+    onToast: setMessage,
+  });
   const dialogRef = useRef<HTMLDialogElement>(null);
   const minutesRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +83,7 @@ export default function Home() {
       setSelectedId(machine?.id ?? null);
       setFromQr(Boolean(machine));
       setDialog(null);
+      setFastDemo(params.get("proto") === "1" && params.get("fast") === "1");
       if (machineId && !machine) setMessage("이 QR의 기기 위치를 확인할 수 없어요. 생활관, 구역, 층을 확인한 뒤 기기를 선택해 주세요.");
       else if (params.has("location") && !requestedLocation) setMessage("등록되지 않은 위치예요. 생활관과 구역을 다시 선택해 주세요.");
     };
@@ -97,7 +110,9 @@ export default function Home() {
     const params = new URLSearchParams();
     if (nextLocation) params.set("location", nextLocation.id);
     else { params.set("building", String(nextBuilding)); params.set("wing", nextWing); }
-    if (new URLSearchParams(window.location.search).get("proto") === "1") params.set("proto", "1");
+    const current = new URLSearchParams(window.location.search);
+    if (current.get("proto") === "1") params.set("proto", "1");
+    if (current.get("proto") === "1" && current.get("fast") === "1") params.set("fast", "1");
     window.history.replaceState(window.history.state, "", `/?${params}`);
   }
 
@@ -131,6 +146,8 @@ export default function Home() {
     else dialogRef.current?.close();
   }
 
+  const homeHref = location ? `/?location=${location.id}` : `/?building=${building}&wing=${wing}`;
+  const brandHref = proto ? `${homeHref}&proto=1${fastDemo ? "&fast=1" : ""}` : homeHref;
   const selected = machines.find((machine) => machine.id === selectedId);
   const selectedStatus = selected ? machineStatus(selected, currentTime) : "unknown";
   const counts = machines.reduce((total, machine) => { total[machineStatus(machine, currentTime)] += 1; return total; }, { running: 0, finished: 0, unknown: 0 });
@@ -138,16 +155,12 @@ export default function Home() {
   const orderedMachines = proto && loaded ? orderMachines(sortableMachines, sortMode) : machines;
   const availableCounts = countAvailable(sortableMachines);
   const selectedAvailable = Boolean(proto && loaded && selectedStatus === "unknown");
-  const homeParams = new URLSearchParams();
-  if (location) homeParams.set("location", location.id);
-  else { homeParams.set("building", String(building)); homeParams.set("wing", wing); }
-  if (proto) homeParams.set("proto", "1");
 
   return (
     <>
       <a className="skip-link" href={location ? "#machine-status" : "#location-picker"}>기기 현황으로 바로 가기</a>
       <HStack as="header" hAlign="between" vAlign="center" className="site-header">
-        <a className="brand" href={`/?${homeParams}`} aria-label="TMI 세탁실 전체 현황"><WashingMachine size={23} strokeWidth={1.8} /><span>TMI 세탁실</span></a>
+        <a className="brand" href={brandHref} aria-label="TMI 세탁실 전체 현황"><WashingMachine size={23} strokeWidth={1.8} /><span>TMI 세탁실</span></a>
         <a className="header-link" href={location ? `/qr?location=${location.id}` : "/qr"}><QrCode size={17} />QR 안내문</a>
       </HStack>
 
@@ -205,6 +218,7 @@ export default function Home() {
               <p className="start-instruction">{location.label}의 기기가 맞는지 확인하고, 실제로 켠 뒤 시작을 눌러 주세요.</p>
               <Button className="primary-button" variant="primary" label={pending === selected.id ? "저장 중이에요" : selectedStatus === "running" ? "시작이 등록됐어요" : `${selected.defaultMinutes}분 시작`} isDisabled={actionsDisabled || selectedStatus === "running"} isLoading={pending === selected.id} onClick={() => void updateMachine(selected, "start")} />
               <Button className="secondary-button" variant="secondary" label={selected.endsAt === null ? "남은 시간 직접 입력" : "남은 시간 수정"} isDisabled={actionsDisabled} onClick={() => openDialog(selected, "adjust")} />
+              {proto && loaded && selectedStatus === "running" && selected.endsAt !== null && <DoneAlertButton scheduled={Boolean(doneAlerts[selected.id])} minutesLeft={minutesUntil(selected.endsAt, currentTime)} permission={alertPermission} pending={alertPending} onSchedule={() => void scheduleDoneAlert({ machineId: selected.id, endsAt: selected.endsAt!, locationLabel: location.label, machineName: selected.name })} onCancel={() => cancelDoneAlert(selected.id)} />}
               <HStack hAlign="between" vAlign="center" className="detail-footer"><span>{selected.updatedAt ? `${timeLabel(selected.updatedAt)} 등록 정보 갱신` : "웹에서 실제 기기를 켜거나 끌 수는 없어요"}</span>{selected.endsAt !== null && <button className="clear-button" disabled={actionsDisabled} onClick={() => openDialog(selected, "clear")}>등록 취소</button>}</HStack>
             </> : <VStack gap={0} hAlign="center" vAlign="center" className="empty-selection"><span><WashingMachine size={28} strokeWidth={1.4} /></span><h2 id="detail-title">등록할 기기를 선택해 주세요.</h2><p>현황판의 기기를 누르면<br />시작 등록과 시간 수정이 가능해요.</p></VStack>}
           </VStack>
