@@ -10,7 +10,7 @@
     "build": "vinext build",
     "preview": "wrangler dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --port 5173 --inspector-port 0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/laundry.test.mjs",
+    "test": "node --test tests/laundry.test.mjs tests/done-alert.test.mjs",
     "test:api": "node --test tests/api.test.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local --persist-to .wrangler/state",
