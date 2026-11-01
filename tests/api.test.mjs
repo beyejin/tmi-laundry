@@ -177,6 +177,24 @@ test('로컬 공유 API 통합 검증', async (t) => {
       assert.deepEqual(machine(after, 'h3-women-2-dryer-1'), machine(before, 'h3-women-2-dryer-1'));
       assert.deepEqual(machine(after, 'h3-women-3-washer-2'), machine(before, 'h3-women-3-washer-2'));
     });
+    await t.test('대기 명단 등록, 중복 거절, 취소', async () => {
+      const nickname = `시험${Date.now() % 100000}`;
+      const wait = (body) => request('/api/waitlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const joined = await wait({ action: 'join', locationId: 'h3-women-2', nickname });
+      assert.equal(joined.status, 200);
+      const { id, token } = joined.body.joined;
+      try {
+        const listed = (await read()).body.waitlist.find((entry) => entry.id === id);
+        assert.equal(listed?.nickname, nickname);
+        assert.ok(!JSON.stringify((await read()).body).includes(token));
+        assert.equal((await wait({ action: 'join', locationId: 'h3-women-2', nickname })).status, 409);
+        assert.equal((await wait({ action: 'leave', id, token: 'x'.repeat(40) })).status, 404);
+      } finally {
+        const left = await wait({ action: 'leave', id, token });
+        assert.equal(left.status, 200);
+      }
+      assert.ok(!(await read()).body.waitlist.some((entry) => entry.id === id));
+    });
   } finally {
     // 중간 검증 실패가 있어도 시험한 세 기기를 각각 정리합니다.
     const cleanupErrors = [];
