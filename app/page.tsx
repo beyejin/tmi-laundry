@@ -16,6 +16,8 @@ import { EmptyFirstBar } from "@/app/proto/empty-first-bar";
 import { minutesUntil } from "@/app/proto/done-alert";
 import { DoneAlertButton } from "@/app/proto/done-alert-button";
 import { useDoneAlerts } from "@/app/proto/use-done-alerts";
+import { useWaitlist } from "@/hooks/use-waitlist";
+import { DryerCard, WaitlistPanel } from "@/app/waitlist-panel";
 
 type DialogState = { machine: Machine; action: "adjust" | "clear" };
 type MachineStatus = "unknown" | "running" | "finished";
@@ -41,7 +43,7 @@ function countdown(seconds: number) {
 }
 
 export default function Home() {
-  const { machines: allMachines, loaded, currentTime, lastSync, connection, refreshing, pending, message, setMessage, refresh, updateMachine, actionsDisabled } = useLaundry();
+  const { machines: allMachines, waitlist: allWaitlist, applySnapshot, loaded, currentTime, lastSync, connection, refreshing, pending, message, setMessage, refresh, updateMachine, actionsDisabled } = useLaundry();
   const [building, setBuilding] = useState<2 | 3>(3);
   const [wing, setWing] = useState<"women" | "men">("women");
   const [locationId, setLocationId] = useState<string | null>("h3-women-2");
@@ -64,6 +66,7 @@ export default function Home() {
     currentTime,
     onToast: setMessage,
   });
+  const { mine, join: joinWaitlist, leave: leaveWaitlist, pending: waitlistPending } = useWaitlist({ waitlist: allWaitlist, loaded, online: connection === "online", setMessage, applySnapshot, refresh });
   const dialogRef = useRef<HTMLDialogElement>(null);
   const minutesRef = useRef<HTMLInputElement>(null);
 
@@ -133,6 +136,12 @@ export default function Home() {
     setDialog({ machine, action });
   }
 
+  async function startMachine(machine: Machine) {
+    const result = await updateMachine(machine, "start");
+    const first = locationWaitlist[0];
+    if (result.status === "saved" && machine.type === "dryer" && first && mine[first.id]) await leaveWaitlist(first.id, "차례가 되어 대기 명단에서 뺐어요.");
+  }
+
   async function submitDialog() {
     if (!dialog) return;
     const value = Number(minutes);
@@ -148,6 +157,8 @@ export default function Home() {
 
   const homeHref = location ? `/?location=${location.id}` : `/?building=${building}&wing=${wing}`;
   const brandHref = proto ? `${homeHref}&proto=1${fastDemo ? "&fast=1" : ""}` : homeHref;
+  const locationWaitlist = allWaitlist.filter((entry) => entry.locationId === locationId);
+  const dryers = machines.filter((machine) => machine.type === "dryer");
   const selected = machines.find((machine) => machine.id === selectedId);
   const selectedStatus = selected ? machineStatus(selected, currentTime) : "unknown";
   const counts = machines.reduce((total, machine) => { total[machineStatus(machine, currentTime)] += 1; return total; }, { running: 0, finished: 0, unknown: 0 });
@@ -185,6 +196,8 @@ export default function Home() {
 
         <HStack hAlign="between" vAlign="center" className="sync-row"><span className={`connection-label ${connection === "offline" ? "is-offline" : ""}`}><StatusDot variant={connection === "offline" ? "warning" : connection === "online" ? "success" : "neutral"} label={connection === "online" ? "연결됨" : "연결 확인 필요"} />{connection === "loading" ? "현황을 불러오는 중이에요" : connection === "offline" ? "마지막 등록 현황" : "10초마다 자동 확인"}</span><HStack gap={2} vAlign="center"><span className="sync-time">{lastSync ? `${timeLabel(lastSync)} 확인` : "연결 확인 중"}</span><button className="refresh-button" aria-label="기기 현황 새로고침" onClick={() => void refresh()} disabled={refreshing || pending !== null}><RefreshCw size={15} className={refreshing ? "is-spinning" : ""} /><span>새로고침</span></button></HStack></HStack>
 
+        <DryerCard dryers={dryers} waiting={locationWaitlist.length} loaded={loaded} currentTime={currentTime} />
+
         <Grid columns={2} gap={4} className="laundry-layout" style={{ gridTemplateColumns: "var(--laundry-columns)" }}>
           <section className="board" id="machine-status" aria-labelledby="board-title">
             <HStack hAlign="between" vAlign="center" className="board-heading"><h2 id="board-title">{location.floor}층 기기 현황</h2><span>기기를 눌러 선택해 주세요</span></HStack>
@@ -216,13 +229,15 @@ export default function Home() {
               <HStack hAlign="between" vAlign="center" className="detail-heading"><VStack gap={0}><span className="detail-eyebrow">{fromQr ? "QR로 선택한 기기" : "선택한 기기"}</span><h2 id="detail-title">{selected.name}</h2></VStack><span className={`detail-status status-${selectedStatus}${selectedAvailable ? " is-available" : ""}`}><StatusDot variant={selectedAvailable ? "success" : statusVariants[selectedStatus]} label={selectedAvailable ? "지금 쓸 수 있어요" : statusNames[selectedStatus]} />{!loaded ? "확인 중" : selectedAvailable ? "지금 쓸 수 있어요" : statusNames[selectedStatus]}</span></HStack>
               <HStack hAlign="between" wrap="wrap" className="detail-readout"><span>{!loaded ? "현황을 확인하고 있어요." : selectedStatus === "running" ? `${timeLabel(selected.endsAt!)} 종료 예상` : selectedStatus === "finished" ? "빨래가 남아 있을 수 있어요." : "등록된 시간 정보가 없어요."}</span><span>기본 {selected.defaultMinutes}분</span></HStack>
               <p className="start-instruction">{location.label}의 기기가 맞는지 확인하고, 실제로 켠 뒤 시작을 눌러 주세요.</p>
-              <Button className="primary-button" variant="primary" label={pending === selected.id ? "저장 중이에요" : selectedStatus === "running" ? "시작이 등록됐어요" : `${selected.defaultMinutes}분 시작`} isDisabled={actionsDisabled || selectedStatus === "running"} isLoading={pending === selected.id} onClick={() => void updateMachine(selected, "start")} />
+              <Button className="primary-button" variant="primary" label={pending === selected.id ? "저장 중이에요" : selectedStatus === "running" ? "시작이 등록됐어요" : `${selected.defaultMinutes}분 시작`} isDisabled={actionsDisabled || selectedStatus === "running"} isLoading={pending === selected.id} onClick={() => void startMachine(selected)} />
               <Button className="secondary-button" variant="secondary" label={selected.endsAt === null ? "남은 시간 직접 입력" : "남은 시간 수정"} isDisabled={actionsDisabled} onClick={() => openDialog(selected, "adjust")} />
               {proto && loaded && selectedStatus === "running" && selected.endsAt !== null && <DoneAlertButton scheduled={Boolean(doneAlerts[selected.id])} minutesLeft={minutesUntil(selected.endsAt, currentTime)} permission={alertPermission} pending={alertPending} onSchedule={() => void scheduleDoneAlert({ machineId: selected.id, endsAt: selected.endsAt!, locationLabel: location.label, machineName: selected.name })} onCancel={() => cancelDoneAlert(selected.id)} />}
               <HStack hAlign="between" vAlign="center" className="detail-footer"><span>{selected.updatedAt ? `${timeLabel(selected.updatedAt)} 등록 정보 갱신` : "웹에서 실제 기기를 켜거나 끌 수는 없어요"}</span>{selected.endsAt !== null && <button className="clear-button" disabled={actionsDisabled} onClick={() => openDialog(selected, "clear")}>등록 취소</button>}</HStack>
             </> : <VStack gap={0} hAlign="center" vAlign="center" className="empty-selection"><span><WashingMachine size={28} strokeWidth={1.4} /></span><h2 id="detail-title">등록할 기기를 선택해 주세요.</h2><p>현황판의 기기를 누르면<br />시작 등록과 시간 수정이 가능해요.</p></VStack>}
           </VStack>
         </Grid>
+
+        <WaitlistPanel locationId={location.id} locationLabel={location.label} dryer={dryers[0]} entries={locationWaitlist} mine={mine} currentTime={currentTime} loaded={loaded} disabled={actionsDisabled || waitlistPending} onJoin={joinWaitlist} onLeave={leaveWaitlist} />
 
         </> : <VStack as="section" gap={3} hAlign="center" className="location-empty" aria-live="polite"><Info size={26} /><h2>시설 정보를 확인하고 있어요.</h2><p>이 구역의 층과 기기 구성이 확인되면<br />위치별 현황을 볼 수 있어요.</p></VStack>}
 

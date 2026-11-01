@@ -233,3 +233,40 @@ h1, h2, p { margin: 0; }
   .floor-picker > .astryx-segmented-control { flex: 1; }
   .page-heading .floor-label { position: static; }
 }
+
+.dryer-card, .waitlist { min-width: 0; margin-bottom: var(--spacing-4); padding: calc(var(--spacing-1) * 5.75); border: var(--border-width) solid var(--border); border-radius: var(--radius-container); background: var(--color-background-surface); }
+.waitlist { margin-top: calc(var(--spacing-1) * 5.5); }
+.dryer-card-heading, .waitlist-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: calc(var(--spacing-1) * 2); }
+.dryer-card-heading h2, .waitlist-heading h2 { display: flex; align-items: center; gap: calc(var(--spacing-1) * 2); font-size: var(--font-size-lg); font-weight: 650; }
+.dryer-waiting, .waitlist-heading > span { display: inline-flex; align-items: center; gap: calc(var(--spacing-1) * 1.25); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.dryer-card-list { margin-top: calc(var(--spacing-1) * 3); }
+.dryer-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: calc(var(--spacing-1) * 1) calc(var(--spacing-1) * 3); font-size: var(--font-size-base); line-height: 1.6; }
+.dryer-line span { color: var(--color-text-secondary); min-width: 0; }
+.waitlist-list { list-style: none; margin: calc(var(--spacing-1) * 4) 0 0; padding: 0; display: flex; flex-direction: column; gap: calc(var(--spacing-1) * 2); }
+.waitlist-item { display: flex; align-items: center; gap: calc(var(--spacing-1) * 3); min-width: 0; padding: calc(var(--spacing-1) * 3); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); background: var(--color-background-surface); }
+.waitlist-item.is-mine { background: var(--color-background-muted); border-color: var(--primary); }
+.waitlist-position { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: calc(var(--spacing-1) * 7); height: calc(var(--spacing-1) * 7); border-radius: 50%; background: var(--color-background-muted); font-size: var(--font-size-sm); font-weight: 650; }
+.waitlist-body { flex: 1; min-width: 0; }
+.waitlist-name { display: flex; align-items: center; gap: calc(var(--spacing-1) * 2); min-width: 0; font-size: var(--font-size-base); }
+.waitlist-name strong { min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
+.waitlist-badge { flex-shrink: 0; font-style: normal; padding: 0 calc(var(--spacing-1) * 2); border-radius: var(--radius-inner, var(--radius-element)); background: var(--primary); color: var(--color-on-accent); font-size: var(--font-size-xs); line-height: 1.7; }
+.waitlist-meta { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--spacing-1) * 1.25); color: var(--color-text-secondary); font-size: var(--font-size-xs); line-height: 1.7; }
+.waitlist-cancel { flex-shrink: 0; min-height: calc(var(--spacing-1) * 11); padding: 0 calc(var(--spacing-1) * 3); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); background: var(--color-background-surface); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.waitlist-cancel:hover:not(:disabled) { background: var(--color-background-muted); }
+.waitlist-cancel:disabled { opacity: .45; }
+.waitlist-empty { margin-top: calc(var(--spacing-1) * 4); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.waitlist-form { margin-top: calc(var(--spacing-1) * 5); }
+.waitlist-form label { display: block; font-size: var(--font-size-sm); font-weight: 600; margin-bottom: calc(var(--spacing-1) * 2); }
+.waitlist-form-row { display: flex; gap: calc(var(--spacing-1) * 2); align-items: stretch; }
+.waitlist-form input { flex: 1; min-width: 0; padding: calc(var(--spacing-1) * 2.75) calc(var(--spacing-1) * 3.25); color: var(--foreground); background: var(--color-background-surface); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); font-size: var(--font-size-base); }
+.waitlist-form input:disabled { background: var(--color-background-muted); color: var(--color-text-disabled); }
+.waitlist-submit { width: auto; flex-shrink: 0; }
+.waitlist-hint { display: block; margin-top: calc(var(--spacing-1) * 2); color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+.waitlist-note { margin-top: calc(var(--spacing-1) * 4); color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: 1.8; }
+@media (max-width: 47.5rem) {
+  .dryer-card, .waitlist { padding: calc(var(--spacing-1) * 4); }
+  .waitlist { margin-top: calc(var(--spacing-1) * 4); }
+  .waitlist-form-row { flex-direction: column; }
+  .waitlist-submit { width: 100%; }
+  .waitlist-note { font-size: var(--font-size-xs); }
+}

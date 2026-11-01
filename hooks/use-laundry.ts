@@ -2,15 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MACHINES, type Command } from "@/lib/laundry";
+import type { WaitlistEntry } from "@/lib/waitlist";
 
 export type Machine = (typeof MACHINES)[number] & {
   endsAt: number | null;
   updatedAt: number | null;
   version: number;
 };
-type Snapshot = { serverTime: number; machines: Machine[] };
+export type Snapshot = { serverTime: number; machines: Machine[]; waitlist?: WaitlistEntry[] };
 type UpdateResult = { status: "saved" | "conflict" | "failed"; error?: string };
 
+const emptyWaitlist: WaitlistEntry[] = [];
 const emptyMachines: Machine[] = MACHINES.map((machine) => ({ ...machine, endsAt: null, updatedAt: null, version: 0 }));
 
 export function useLaundry() {
@@ -124,6 +126,7 @@ export function useLaundry() {
 
   return {
     machines: snapshot?.machines ?? emptyMachines,
+    waitlist: snapshot?.waitlist ?? emptyWaitlist,
     loaded: snapshot !== null,
     currentTime: now + offset,
     lastSync: snapshot?.serverTime ?? null,
@@ -133,6 +136,7 @@ export function useLaundry() {
     message,
     setMessage,
     refresh,
+    applySnapshot,
     updateMachine,
     actionsDisabled: connection !== "online" || pending !== null || snapshot === null,
   };
