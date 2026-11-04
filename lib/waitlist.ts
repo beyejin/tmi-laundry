@@ -1,4 +1,4 @@
-import { findLocation } from "./laundry.ts";
+import { findLocation, isWaitlistId, isWaitlistToken } from "./laundry.ts";
 
 export const WAITLIST_LIMIT = 8;
 export const WAITLIST_TTL_MS = 3 * 60 * 60_000;
@@ -27,8 +27,7 @@ export function parseWaitlistCommand(value: unknown): WaitlistCommand | null {
     return nickname ? { action: "join", locationId: input.locationId, nickname } : null;
   }
   if (input.action === "leave") {
-    if (typeof input.id !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(input.id)) return null;
-    if (typeof input.token !== "string" || input.token.length < 16 || input.token.length > 128) return null;
+    if (!isWaitlistId(input.id) || !isWaitlistToken(input.token)) return null;
     return { action: "leave", id: input.id, token: input.token };
   }
   return null;
@@ -42,7 +41,15 @@ export function joinQuery(entry: { id: string; locationId: string; nickname: str
 }
 
 export function leaveQuery(id: string, ownerHash: string) {
-  return { sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND owner_hash = ?2 RETURNING id", values: [id, ownerHash] };
+  return { sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND owner_hash = ?2 RETURNING id, location_id", values: [id, ownerHash] };
+}
+
+/** 건조기 시작과 같은 batch에서 실행해요. 시작 UPDATE가 반영된 경우(version, updated_at 일치)에만 본인 대기 항목을 지워요. */
+export function turnQuery(turn: { entryId: string; ownerHash: string; locationId: string; machineId: string; newVersion: number; now: number }) {
+  return {
+    sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND owner_hash = ?2 AND location_id = ?3 AND EXISTS (SELECT 1 FROM machine_state WHERE id = ?4 AND version = ?5 AND updated_at = ?6) RETURNING id",
+    values: [turn.entryId, turn.ownerHash, turn.locationId, turn.machineId, turn.newVersion, turn.now],
+  };
 }
 
 export function expiredCleanupQuery(now: number) {
