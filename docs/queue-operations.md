@@ -118,3 +118,22 @@ npm run test:api
 6. 관리자 일시중지 후 새 접수와 배정만 멈추고 수거와 취소가 계속 가능한지 확인
 
 운영 DB에 가짜 사용이나 신고를 넣는 테스트는 하지 않습니다.
+
+## 로컬 대기 API 재현
+
+대기 API 테스트는 아래 전용 DB의 대기 이력을 초기화합니다. 일반 미리보기의 `.wrangler/state`와 운영 DB는 변경하지 않습니다. 첫 터미널에서 다음을 실행합니다.
+
+```sh
+npx wrangler d1 migrations apply DB --local --persist-to .wrangler/queue-test
+npm run build
+npx wrangler dev --config dist/server/wrangler.json --local \
+  --persist-to .wrangler/queue-test --ip 127.0.0.1 --port 5173 --inspector-port 0 \
+  --var APP_ORIGIN:http://127.0.0.1:5173 --var QUEUE_ENABLED:true \
+  --var ADMIN_GOOGLE_SUBS:e2e-admin \
+  --var VAPID_PUBLIC_KEY:integration-test-invalid-key \
+  --var VAPID_PRIVATE_KEY:integration-test-invalid-key
+```
+
+다른 터미널에서 `npm run test:queue-api`를 실행합니다. 테스트용 사용자는 학교 OAuth 검증을 대신하지 않으며 운영에는 생성하지 않습니다.
+
+Wrangler 4.92.0의 로컬 정적 파일 라우터에서 scheduled 호출이 500으로 끝나는 현상을 확인했습니다. 같은 최소 Worker에 assets만 추가해도 재현되며, 실제 빌드의 assets 설정만 제외하면 scheduled는 200으로 실행됩니다. 이 버전에서 로컬 scheduled 실패를 곧바로 대기 엔진 실패로 해석하지 않습니다. 운영 Cron은 별도로 실행 기록을 확인합니다.
