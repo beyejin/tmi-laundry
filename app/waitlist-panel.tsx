@@ -18,9 +18,9 @@ export function DryerCard({ dryers, waiting, loaded, currentTime }: { dryers: Ma
     <HStack hAlign="between" vAlign="center" className="dryer-card-heading"><h2 id="dryer-card-title"><Wind size={18} />건조기 완료 예정</h2><span className="dryer-waiting"><Users size={15} />대기 {loaded ? waiting : "?"}명</span></HStack>
     <VStack gap={1} className="dryer-card-list">
       {dryers.map((dryer) => {
-        const status = machineStatus(dryer.endsAt, currentTime);
+        const status = machineStatus(dryer.endsAt, currentTime, dryer.outOfService);
         const seconds = dryer.endsAt === null ? null : Math.max(0, Math.ceil((dryer.endsAt - currentTime) / 1_000));
-        const text = !loaded ? "현황을 확인하고 있어요." : status === "unknown" ? "등록된 사용이 없어요" : status === "running" ? `${timeLabel(dryer.endsAt!)} 완료 예정 (약 ${Math.ceil(seconds! / 60)}분 남음)` : status === "stale" ? `확인 필요 · 끝난 지 ${formatSinceEnd(dryer.endsAt!, currentTime)}` : "예상 종료 · 수거 여부 미확인";
+        const text = !loaded ? "현황을 확인하고 있어요." : status === "service" ? `점검 중 · ${dryer.serviceNote ?? "관리자 확인 중"}` : status === "unknown" ? "등록된 사용이 없어요" : status === "running" ? `${timeLabel(dryer.endsAt!)} 완료 예정 (약 ${Math.ceil(seconds! / 60)}분 남음)` : status === "stale" ? `확인 필요 · 끝난 지 ${formatSinceEnd(dryer.endsAt!, currentTime)}` : "예상 종료 · 수거 여부 미확인";
         return <p key={dryer.id} className="dryer-line"><strong>{dryer.name}</strong><span>{text}</span></p>;
       })}
     </VStack>
@@ -36,17 +36,18 @@ type PanelProps = {
   currentTime: number;
   loaded: boolean;
   disabled: boolean;
+  dryerInService: boolean;
   onJoin: (locationId: string, nickname: string) => Promise<boolean>;
   onLeave: (entryId: string) => Promise<boolean>;
 };
 
-export function WaitlistPanel({ locationId, locationLabel, dryer, entries, mine, currentTime, loaded, disabled, onJoin, onLeave }: PanelProps) {
+export function WaitlistPanel({ locationId, locationLabel, dryer, entries, mine, currentTime, loaded, disabled, dryerInService, onJoin, onLeave }: PanelProps) {
   const [nickname, setNickname] = useState("");
   const turns = dryer ? estimateTurns(dryer, entries.length, currentTime) : [];
   const hasMine = entries.some((entry) => mine[entry.id]);
   const full = entries.length >= WAITLIST_LIMIT;
-  const blocked = disabled || full || hasMine || !loaded;
-  const hint = hasMine ? "이 층에는 이미 대기 중이에요." : full ? `대기는 최대 ${WAITLIST_LIMIT}명까지예요.` : "";
+  const blocked = disabled || full || hasMine || !loaded || dryerInService;
+  const hint = dryerInService ? "건조기 점검 중에는 대기 등록을 받지 않아요." : hasMine ? "이 층에는 이미 대기 중이에요." : full ? `대기는 최대 ${WAITLIST_LIMIT}명까지예요.` : "";
 
   async function submit() {
     if (blocked || !nickname.trim()) return;

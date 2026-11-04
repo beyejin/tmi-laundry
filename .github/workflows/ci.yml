@@ -26,6 +26,12 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run db:migrate:local
+      - name: 관리자 시험용 토큰 준비
+        run: |
+          token="ci-$(openssl rand -hex 16)"
+          echo "::add-mask::$token"
+          echo "ADMIN_TOKEN=$token" > .dev.vars
+          echo "ADMIN_TOKEN=$token" >> "$GITHUB_ENV"
       - name: preview 서버 시작
         run: npm run preview > preview.log 2>&1 &
       - run: npx -y wait-on@8.0.3 -t 90000 http-get://127.0.0.1:5173/api/machines

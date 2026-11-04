@@ -40,6 +40,7 @@ h1, h2, p { margin: 0; }
 .status-running { --status-color: var(--color-text-green); --status-background: var(--color-background-green); --status-border: var(--color-border-green); }
 .status-finished { --status-color: var(--color-text-yellow); --status-background: var(--color-warning-muted); --status-border: var(--color-border-yellow); }
 .status-stale { --status-color: var(--color-text-orange); --status-background: var(--color-background-surface); --status-border: var(--color-border-yellow); }
+.status-service { --status-color: var(--color-text-red); --status-background: var(--color-background-red); --status-border: var(--color-border-red); }
 .status-unknown { --status-color: var(--color-text-secondary); --status-background: var(--color-background-muted); --status-border: var(--color-border); }
 .summary-item .status-dot { color: var(--status-color); }
 .summary-item strong { color: var(--status-color); }
@@ -271,3 +272,47 @@ h1, h2, p { margin: 0; }
   .waitlist-submit { width: 100%; }
   .waitlist-note { font-size: var(--font-size-xs); }
 }
+
+.service-summary { display: flex; align-items: center; gap: calc(var(--spacing-1) * 2); margin: calc(var(--spacing-1) * 2) 0 calc(var(--spacing-1) * 3); color: var(--color-text-red); font-size: var(--font-size-sm); }
+.machine-tile.status-service .tile-time-text { font-size: var(--font-size-xl); }
+.machine-tile.status-service .tile-time-caption { overflow-wrap: anywhere; }
+.report-button { display: inline-flex; align-items: center; gap: calc(var(--spacing-1) * 1.5); align-self: flex-start; min-height: calc(var(--spacing-1) * 11); margin-top: calc(var(--spacing-1) * 2); padding: 0; border: 0; background: transparent; color: var(--color-text-secondary); font-size: var(--font-size-sm); text-decoration: underline; text-underline-offset: calc(var(--spacing-1) * 0.75); }
+.report-button:disabled { opacity: .55; text-decoration: none; }
+
+/* 관리자 화면 */
+.admin-shell { max-width: calc(var(--spacing-10) * 24); margin: 0 auto; padding: var(--spacing-4) calc(var(--spacing-1) * 4) var(--spacing-10); }
+.admin-shell h1 { font-size: var(--font-size-2xl); font-weight: 650; }
+.admin-shell h2 { font-size: var(--font-size-lg); font-weight: 650; }
+.admin-top { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-3); margin-bottom: var(--spacing-4); }
+.admin-card { min-width: 0; margin-bottom: var(--spacing-4); padding: calc(var(--spacing-1) * 4.5); border: var(--border-width) solid var(--border); border-radius: var(--radius-container); background: var(--color-background-surface); }
+.admin-card > h2 { margin-bottom: var(--spacing-3); }
+.admin-note { color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: 1.7; }
+.admin-error { color: var(--color-text-red); font-size: var(--font-size-sm); margin-top: var(--spacing-2); }
+.admin-field { display: flex; flex-direction: column; gap: var(--spacing-1); min-width: 0; }
+.admin-field label { font-size: var(--font-size-sm); font-weight: 600; }
+.admin-field input, .admin-input { min-width: 0; width: 100%; padding: calc(var(--spacing-1) * 2.5) calc(var(--spacing-1) * 3); color: var(--foreground); background: var(--color-background-surface); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); font-size: var(--font-size-base); }
+.admin-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--spacing-2); }
+.admin-row > .admin-field { flex: 1 1 calc(var(--spacing-1) * 36); }
+.admin-btn { min-height: calc(var(--spacing-1) * 11); padding: 0 calc(var(--spacing-1) * 3.5); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); background: var(--color-background-surface); color: var(--foreground); font-size: var(--font-size-sm); font-weight: 600; white-space: nowrap; }
+.admin-btn:hover:not(:disabled) { background: var(--color-background-muted); }
+.admin-btn:disabled { opacity: .5; }
+.admin-btn.is-primary { background: var(--primary); border-color: var(--primary); color: var(--color-on-accent); }
+.admin-btn.is-danger { border-color: var(--color-border-red); color: var(--color-text-red); }
+.admin-btn.is-armed { background: var(--color-background-red); border-color: var(--color-border-red); color: var(--color-text-red); }
+.admin-floor { margin-top: var(--spacing-4); }
+.admin-floor > h3 { font-size: var(--font-size-base); font-weight: 650; margin-bottom: var(--spacing-2); }
+.admin-machine { display: flex; flex-direction: column; gap: var(--spacing-2); padding: var(--spacing-3); border: var(--border-width) solid var(--status-border, var(--color-border)); border-radius: var(--radius-element); background: var(--status-background, var(--color-background-surface)); margin-bottom: var(--spacing-2); }
+.admin-machine-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-2); }
+.admin-machine-head strong { font-size: var(--font-size-base); }
+.admin-badge { font-size: var(--font-size-xs); padding: 0 calc(var(--spacing-1) * 2); border-radius: var(--radius-inner, var(--radius-element)); border: var(--border-width) solid var(--status-border, var(--color-border)); color: var(--status-color, var(--foreground)); line-height: 1.8; }
+.admin-meta { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.admin-meta.has-report { color: var(--color-text-red); font-weight: 600; }
+.admin-waitlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--spacing-2); }
+.admin-waitlist li { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-2); padding: var(--spacing-2) var(--spacing-3); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); min-width: 0; }
+.admin-waitlist li span { min-width: 0; overflow-wrap: anywhere; font-size: var(--font-size-sm); }
+.admin-scroll { overflow-x: auto; max-width: 100%; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.admin-table th, .admin-table td { padding: var(--spacing-2); border-bottom: var(--border-width) solid var(--color-border); text-align: right; white-space: nowrap; }
+.admin-table th:first-child, .admin-table td:first-child { text-align: left; }
+.admin-hours { display: grid; grid-template-columns: auto 1fr auto; gap: calc(var(--spacing-1) * 0.5) var(--spacing-2); align-items: center; font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
+.admin-hours .bar { height: calc(var(--spacing-1) * 2); border-radius: var(--radius-full); background: var(--primary); min-width: 0; }

@@ -33,11 +33,27 @@ export function parseWaitlistCommand(value: unknown): WaitlistCommand | null {
   return null;
 }
 
-export function joinQuery(entry: { id: string; locationId: string; nickname: string; ownerHash: string }, now: number) {
+export const DRYER_SERVICE_MESSAGE = "건조기 점검 중에는 대기 등록을 받지 않아요.";
+
+/** 이 층의 건조기가 전부 점검 중인지 세는 조건이에요. 건조기 ID 목록이 비면 조건을 넣지 않아요. */
+function dryersInServiceClause(dryerIds: readonly string[], first: number) {
+  if (!dryerIds.length) return null;
+  const marks = dryerIds.map((_, index) => `?${first + index}`).join(", ");
+  return { sql: `(SELECT COUNT(*) FROM machine_state WHERE id IN (${marks}) AND out_of_service = 1)`, count: `?${first + dryerIds.length}`, values: [...dryerIds, dryerIds.length] };
+}
+
+export function joinQuery(entry: { id: string; locationId: string; nickname: string; ownerHash: string }, now: number, dryerIds: readonly string[] = []) {
+  const service = dryersInServiceClause(dryerIds, 8);
   return {
-    sql: "INSERT INTO waitlist_entry (id, location_id, nickname, owner_hash, created_at) SELECT ?1, ?2, ?3, ?4, ?5 WHERE (SELECT COUNT(*) FROM waitlist_entry WHERE location_id = ?2 AND created_at > ?6) < ?7 AND NOT EXISTS (SELECT 1 FROM waitlist_entry WHERE location_id = ?2 AND nickname = ?3 AND created_at > ?6) RETURNING id",
-    values: [entry.id, entry.locationId, entry.nickname, entry.ownerHash, now, now - WAITLIST_TTL_MS, WAITLIST_LIMIT],
+    sql: `INSERT INTO waitlist_entry (id, location_id, nickname, owner_hash, created_at) SELECT ?1, ?2, ?3, ?4, ?5 WHERE (SELECT COUNT(*) FROM waitlist_entry WHERE location_id = ?2 AND created_at > ?6) < ?7 AND NOT EXISTS (SELECT 1 FROM waitlist_entry WHERE location_id = ?2 AND nickname = ?3 AND created_at > ?6)${service ? ` AND ${service.sql} < ${service.count}` : ""} RETURNING id`,
+    values: [entry.id, entry.locationId, entry.nickname, entry.ownerHash, now, now - WAITLIST_TTL_MS, WAITLIST_LIMIT, ...(service?.values ?? [])],
   };
+}
+
+/** join이 거절됐을 때 원인이 점검인지 가리려고 다시 읽어요. 점검 중인 건조기 수를 돌려줘요. */
+export function dryersInServiceQuery(dryerIds: readonly string[]) {
+  const service = dryersInServiceClause(dryerIds, 1)!;
+  return { sql: `SELECT ${service.sql} AS n`, values: dryerIds.slice() };
 }
 
 export function leaveQuery(id: string, ownerHash: string) {

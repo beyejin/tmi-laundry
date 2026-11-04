@@ -81,3 +81,21 @@ API 검증에는 잘못된 입력 거절, 36분 및 45분 계산, 중복 시작 
 - 확인 후 건조기는 등록 취소로 되돌림
 
 확인하지 않은 것: 운영 D1에 0002 적용, GitHub Actions 실행, 두 기기 동시 요청 경합(단위 테스트에서 BEGIN/COMMIT 순서로만 재현), 브라우저 화면 스크린샷 저장(Playwright MCP가 스크래치패드 경로 쓰기를 허용하지 않음).
+
+## 운영 보강 C (관리자 화면, 점검 상태, 고장 신고, 통계와 CSV)
+
+2026년 11월 4일 로컬에서 확인했습니다.
+
+- TypeScript 검사, 단위 테스트 64개, 배포 빌드 통과. 빌드 경로 목록에 `/admin`, `/api/admin/{overview,waitlist,events.csv,machines/:id}`, `/api/machines/:id/report`가 모두 잡힘
+- `.wrangler/state`를 지우고 `npm run db:migrate:local`로 0000~0003 적용. 0003은 `ALTER TABLE ... ADD`(기본값 0, NOT NULL)와 `ADD service_note` 두 줄이며 테이블 재생성이 아님
+- `npm run preview` 후 `npm run test:api`: ADMIN_TOKEN 없이 16개 통과 + 1개 건너뜀(관리자 시험, 401 확인은 실행), ADMIN_TOKEN을 주고 17개 전부 통과
+- workerd에서 `crypto.subtle.timingSafeEqual` 존재 확인(Miniflare로 함수 여부와 같은/다른 값 비교). 올바른 토큰은 200, 틀린 토큰과 토큰 없음은 401
+- `.dev.vars`는 루트에 두면 preview에서 읽히지 않고, `dist/server/.dev.vars`에 두면 읽힘. `--env-file`은 효과 없음. `preview` 스크립트가 복사하도록 함
+- CSV: `text/csv; charset=utf-8`, `Content-Disposition: attachment`, 앞 3바이트 `EF BB BF`, 첫 줄 `at_kst,kind,location_id,machine_id,minutes,prev_remaining_sec`
+- 390px 화면(Playwright): 건조기를 점검 중으로 바꾸면 메인에서 타일 `점검 중`/`이용 불가`/메모, 시작과 시간 입력 버튼 비활성, 요약 아래 `점검 중 1대`, 건조기 카드와 대기 등록 안내 표시, 타일 3개 한 줄, scrollWidth 375. `고장 신고` 버튼을 누르면 확인 창 없이 접수 메시지가 뜨고 버튼이 비활성화됨, 저장소에 기록
+- `/admin`: 틀린 토큰은 거절되고 올바른 토큰으로 진입, 기기 12대 표시, 점검 시작(메모)·초기화(2단계 버튼)·대기 항목 삭제(2단계 버튼) 동작, 통계 표·시간대 막대·예상 정확도 표시, CSV 내려받기 파일 생성, 두 화면 모두 scrollWidth 375, `noindex` 메타 확인. 콘솔 오류는 틀린 토큰의 401 응답 한 건뿐
+- 확인 후 점검 상태와 등록은 되돌리고 `.wrangler/state`를 다시 지워 새로 만듦
+
+- 리뷰 보강: `overview?stats=0`은 machines/waitlist/serverTime만 반환(통계·정리 없음), 기본값은 통계 포함. CSV는 음수 숫자(`-120`)를 그대로 내보내고 문자열만 `'`로 막음. 점검 중 일반 시작은 409 `{error, reason:"service"}`. 포트 5331에서 API 테스트 17개 전부 통과(ADMIN_TOKEN 지정)
+
+확인하지 않은 것: 운영 D1에 0003 적용과 `wrangler secret put`, GitHub Actions에서의 실제 실행(`.dev.vars` 생성 단계 포함), 실제 휴대폰에서의 관리자 화면. 로컬 `wrangler dev`는 요청 사이에 워커를 다시 띄워 가끔 "restarted mid-request" 503을 돌려주는데(PR B 코드에서도 재현), API 테스트의 요청 도우미가 이 경우만 다시 보냄.
