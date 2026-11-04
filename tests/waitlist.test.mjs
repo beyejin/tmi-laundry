@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
-import { WAITLIST_LIMIT, WAITLIST_TTL_MS, estimateTurns, hashToken, joinQuery, leaveQuery, parseWaitlistCommand, waitlistSnapshot, expiredCleanupQuery } from '../lib/waitlist.ts';
+import { createDb } from './schema.mjs';
+import { mutationQuery } from '../lib/laundry.ts';
+import { WAITLIST_LIMIT, WAITLIST_TTL_MS, estimateTurns, hashToken, joinQuery, leaveQuery, turnQuery, parseWaitlistCommand, waitlistSnapshot, expiredCleanupQuery } from '../lib/waitlist.ts';
 
 const LOC = 'h3-women-2';
 const NOW = 1_800_000_000_000;
 
 function setup() {
-  const db = new DatabaseSync(':memory:');
-  db.exec('CREATE TABLE waitlist_entry (id TEXT PRIMARY KEY, location_id TEXT NOT NULL, nickname TEXT NOT NULL, owner_hash TEXT NOT NULL, created_at INTEGER NOT NULL)');
+  const db = createDb();
   const run = (q) => db.prepare(q.sql).get(Object.fromEntries(q.values.map((value, index) => [String(index + 1), value])));
   return {
     db,
@@ -70,7 +70,7 @@ test('빠지기는 올바른 소유자 해시일 때만 가능', async () => {
   assert.equal(t.leave('a', await hashToken('다른토큰')), undefined);
   assert.equal(t.rows().length, 1);
   assert.equal(t.leave('missing', hash), undefined);
-  assert.equal(t.leave('a', hash)?.id, 'a');
+  assert.deepEqual({ ...t.leave('a', hash) }, { id: 'a', location_id: LOC });
   assert.equal(t.rows().length, 0);
   t.db.close();
 });
@@ -100,4 +100,71 @@ test('토큰 해시는 항상 같은 64자리 16진수', async () => {
   assert.match(a, /^[0-9a-f]{64}$/);
   assert.equal(a, await hashToken('token'));
   assert.notEqual(a, await hashToken('token2'));
+});
+
+const DRYER = 'h3-women-2-dryer-1';
+const bind = (q) => Object.fromEntries(q.values.map((value, index) => [String(index + 1), value]));
+
+// 실제 D1 batch 대신 BEGIN; 시작; 대기 정리; COMMIT 순서로 같은 흐름을 재현해요.
+function startWithTurn(t, { expectedVersion, entryId = 'a', hash, locationId = LOC, now = NOW + 5_000 }) {
+  const start = mutationQuery(DRYER, { action: 'start', expectedVersion }, now);
+  const turn = turnQuery({ entryId, ownerHash: hash, locationId, machineId: DRYER, newVersion: expectedVersion + 1, now });
+  t.db.exec('BEGIN');
+  const started = t.db.prepare(start.sql).get(bind(start));
+  const removed = t.db.prepare(turn.sql).get(bind(turn));
+  t.db.exec('COMMIT');
+  return { started, removed };
+}
+
+test('대기 정리: 시작 성공이면 내 항목 삭제, 기존 기기 행도 마찬가지', () => {
+  const t = setup();
+  t.join('a', '301호', NOW, LOC, 'mine');
+  t.db.prepare('INSERT INTO machine_state (id, ends_at, updated_at, version) VALUES (?1, NULL, ?2, 3)').run(DRYER, NOW);
+  const { started, removed } = startWithTurn(t, { expectedVersion: 3, hash: 'mine' });
+  assert.equal(started.version, 4);
+  assert.equal(removed?.id, 'a');
+  assert.equal(t.rows().length, 0);
+  t.db.close();
+});
+
+test('대기 정리: 신규 기기 행(expectedVersion 0 -> 1)도 삭제', () => {
+  const t = setup();
+  t.join('a', '301호', NOW, LOC, 'mine');
+  const { started, removed } = startWithTurn(t, { expectedVersion: 0, hash: 'mine' });
+  assert.equal(started.version, 1);
+  assert.equal(removed?.id, 'a');
+  t.db.close();
+});
+
+test('대기 정리: 시작이 버전 불일치로 실패하면 명단 유지', () => {
+  const t = setup();
+  t.join('a', '301호', NOW, LOC, 'mine');
+  t.db.prepare('INSERT INTO machine_state (id, ends_at, updated_at, version) VALUES (?1, NULL, ?2, 3)').run(DRYER, NOW);
+  const { started, removed } = startWithTurn(t, { expectedVersion: 2, hash: 'mine' });
+  assert.equal(started, undefined);
+  assert.equal(removed, undefined);
+  assert.equal(t.rows().length, 1);
+  t.db.close();
+});
+
+test('대기 정리: 가동 중 재시작이 막히면 명단 유지', () => {
+  const t = setup();
+  t.join('a', '301호', NOW, LOC, 'mine');
+  t.db.prepare('INSERT INTO machine_state (id, ends_at, updated_at, version) VALUES (?1, ?2, ?3, 3)').run(DRYER, NOW + 60 * 60_000, NOW);
+  const { started, removed } = startWithTurn(t, { expectedVersion: 3, hash: 'mine' });
+  assert.equal(started, undefined);
+  assert.equal(removed, undefined);
+  assert.equal(t.rows().length, 1);
+  t.db.close();
+});
+
+test('대기 정리: 남의 해시나 다른 층 항목은 시작이 성공해도 유지', () => {
+  const t = setup();
+  t.join('a', '301호', NOW, LOC, 'mine');
+  t.join('b', '302호', NOW, 'h3-women-3', 'mine');
+  assert.equal(startWithTurn(t, { expectedVersion: 0, hash: 'other' }).removed, undefined);
+  t.db.prepare('DELETE FROM machine_state').run();
+  assert.equal(startWithTurn(t, { expectedVersion: 0, entryId: 'b', hash: 'mine' }).removed, undefined);
+  assert.equal(t.rows().length, 2);
+  t.db.close();
 });

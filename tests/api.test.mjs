@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MACHINES } from '../lib/laundry.ts';
 
-// 로컬 시험 서버에서 3생활관 여자 2층과 3층의 지정 기기만 변경합니다.
+// 로컬 시험 서버에서 3생활관 여자 2층, 3층, 5층(건조기)의 지정 기기만 변경합니다.
 const BASE = 'http://127.0.0.1:5173';
-const TEST_IDS = ['h3-women-2-washer-2', 'h3-women-2-dryer-1', 'h3-women-3-washer-2'];
+const TEST_IDS = ['h3-women-2-washer-2', 'h3-women-2-dryer-1', 'h3-women-3-washer-2', 'h3-women-5-dryer-1'];
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE}${path}`, {
@@ -195,8 +195,37 @@ test('로컬 공유 API 통합 검증', async (t) => {
       }
       assert.ok(!(await read()).body.waitlist.some((entry) => entry.id === id));
     });
+    await t.test('건조기 시작과 함께 내 대기 항목을 서버가 정리하고, 다른 사람 토큰이면 유지', async () => {
+      const dryerId = 'h3-women-5-dryer-1';
+      const wait = (body) => request('/api/waitlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const suffix = Date.now() % 100000;
+      const joined = await wait({ action: 'join', locationId: 'h3-women-5', nickname: `차례${suffix}` });
+      assert.equal(joined.status, 200);
+      const { id, token } = joined.body.joined;
+      try {
+        const adjustWithWaitlist = await post(dryerId, { action: 'adjust', minutes: 10, expectedVersion: machine((await read()).body, dryerId).version, waitlist: { id, token } });
+        assert.equal(adjustWithWaitlist.status, 400);
+        const wrong = await post(dryerId, { action: 'start', expectedVersion: machine((await read()).body, dryerId).version, waitlist: { id, token: 'y'.repeat(40) } });
+        assert.equal(wrong.status, 200);
+        assert.equal(wrong.body.waitlistRemoved, undefined);
+        assert.ok(wrong.body.waitlist.some((entry) => entry.id === id));
+        const cleared = await post(dryerId, { action: 'clear', expectedVersion: machine(wrong.body, dryerId).version });
+        assert.equal(cleared.status, 200);
+        const stale = await post(dryerId, { action: 'start', expectedVersion: machine(cleared.body, dryerId).version - 1, waitlist: { id, token } });
+        assert.equal(stale.status, 409);
+        assert.ok((await read()).body.waitlist.some((entry) => entry.id === id), '실패한 시작은 대기 항목을 지우면 안 됩니다');
+        const started = await post(dryerId, { action: 'start', expectedVersion: machine(cleared.body, dryerId).version, waitlist: { id, token } });
+        assert.equal(started.status, 200);
+        assert.equal(started.body.waitlistRemoved, true);
+        assertMinutes(started.body, dryerId, 45);
+        assert.ok(!started.body.waitlist.some((entry) => entry.id === id));
+        assert.ok(!(await read()).body.waitlist.some((entry) => entry.id === id));
+      } finally {
+        await wait({ action: 'leave', id, token });
+      }
+    });
   } finally {
-    // 중간 검증 실패가 있어도 시험한 세 기기를 각각 정리합니다.
+    // 중간 검증 실패가 있어도 시험한 기기를 각각 정리합니다.
     const cleanupErrors = [];
     for (const id of TEST_IDS) {
       try {
@@ -212,7 +241,7 @@ test('로컬 공유 API 통합 검증', async (t) => {
         cleanupErrors.push(error);
       }
     }
-    await t.test('시험 종료 후 세 기기의 등록 취소와 null 재조회', () => {
+    await t.test('시험 종료 후 네 기기의 등록 취소와 null 재조회', () => {
       if (cleanupErrors.length) throw new AggregateError(cleanupErrors, '시험 기기 정리 실패');
     });
   }
