@@ -22,35 +22,37 @@ function setup() {
 test('확인된 위치만 등록하고 생활관과 구역과 층을 기기 ID에 포함', () => {
   assert.deepEqual(BUILDINGS, [2, 3]);
   assert.deepEqual(WINGS.map((wing) => wing.id), ['women', 'men']);
-  assert.deepEqual(LOCATIONS.map((location) => location.id), ['h3-women-2', 'h3-women-3', 'h3-women-4', 'h3-women-5', 'h2-men-1']);
-  assert.equal(MACHINES.length, 30);
-  assert.equal(new Set(MACHINES.map((machine) => machine.id)).size, 30);
+  assert.deepEqual(LOCATIONS.map((location) => location.id).sort(), ['h2-men-1', 'h2-women-1', 'h3-men-2', 'h3-men-3', 'h3-men-4', 'h3-men-5', 'h3-women-2', 'h3-women-3', 'h3-women-4', 'h3-women-5']);
+  assert.equal(MACHINES.length, 60);
+  assert.equal(new Set(MACHINES.map((machine) => machine.id)).size, 60);
   for (const location of LOCATIONS.filter((item) => item.building === 3)) {
     const machines = MACHINES.filter((machine) => machine.locationId === location.id);
     assert.equal(findLocation(location.id), location);
     assert.deepEqual(machines.map((machine) => machine.id), [`${location.id}-washer-1`, `${location.id}-washer-2`, `${location.id}-dryer-1`]);
     assert.deepEqual(machines.map((machine) => machine.defaultMinutes), [36, 36, 45]);
   }
-  for (const id of ['h2-women-2', 'h2-men-2', 'h3-men-2', 'h3-women-1']) assert.equal(findLocation(id), undefined);
+  for (const id of ['h2-women-2', 'h2-men-2', 'h3-men-1', 'h3-women-1']) assert.equal(findLocation(id), undefined);
 });
 
-test('2생활관 남자 1층은 세탁기 12대와 건조기 6대이며 번호 범위를 초과하지 않음', () => {
-  const location = findLocation('h2-men-1');
-  assert.equal(location.washerCount, 12);
-  assert.equal(location.dryerCount, 6);
-  const machines = MACHINES.filter((machine) => machine.locationId === location.id);
-  assert.equal(machines.length, 18);
-  assert.equal(machines.filter((machine) => machine.type === 'washer').length, 12);
-  assert.equal(machines.filter((machine) => machine.type === 'dryer').length, 6);
-  assert.equal(findMachine('h2-men-1-washer-12').name, '세탁기 12');
-  assert.equal(findMachine('h2-men-1-washer-12').defaultMinutes, 36);
-  assert.equal(findMachine('h2-men-1-dryer-6').name, '건조기 6');
-  assert.equal(findMachine('h2-men-1-dryer-6').defaultMinutes, 45);
-  for (const id of ['h2-men-1-washer-0', 'h2-men-1-washer-13', 'h2-men-1-dryer-7']) assert.equal(findMachine(id), undefined);
+test('2생활관 남녀 1층은 각각 세탁기 12대와 건조기 6대이며 번호 범위를 초과하지 않음', () => {
+  for (const wing of ['women', 'men']) {
+    const location = findLocation(`h2-${wing}-1`);
+    assert.equal(location.washerCount, 12);
+    assert.equal(location.dryerCount, 6);
+    const machines = MACHINES.filter((machine) => machine.locationId === location.id);
+    assert.equal(machines.length, 18);
+    assert.equal(machines.filter((machine) => machine.type === 'washer').length, 12);
+    assert.equal(machines.filter((machine) => machine.type === 'dryer').length, 6);
+    assert.equal(findMachine(`${location.id}-washer-12`).name, '세탁기 12');
+    assert.equal(findMachine(`${location.id}-washer-12`).defaultMinutes, 36);
+    assert.equal(findMachine(`${location.id}-dryer-6`).name, '건조기 6');
+    assert.equal(findMachine(`${location.id}-dryer-6`).defaultMinutes, 45);
+    for (const suffix of ['washer-0', 'washer-13', 'dryer-7']) assert.equal(findMachine(`${location.id}-${suffix}`), undefined);
+  }
 });
 
 test('기존 ID와 확인되지 않은 구역 기기를 새 위치로 매핑하지 않음', () => {
-  for (const id of ['washer-1', 'washer-2', 'dryer-1', 'h2-women-2-washer-1', 'h3-men-2-washer-1', 'h3-women-1-washer-1']) {
+  for (const id of ['washer-1', 'washer-2', 'dryer-1', 'h2-women-2-washer-1', 'h3-men-1-washer-1', 'h3-women-1-washer-1']) {
     assert.equal(findMachine(id), undefined);
     assert.throws(() => mutationQuery(id, { action: 'start', expectedVersion: 0 }, 1000), /등록되지 않은 기기/);
     assert.throws(() => mutationQuery(id, { action: 'clear', expectedVersion: 1 }, 1000), /등록되지 않은 기기/);
@@ -60,10 +62,10 @@ test('기존 ID와 확인되지 않은 구역 기기를 새 위치로 매핑하�
 test('기존 위치 미지정 DB 기록을 보존하면서 새 위치 현황에서 제외', () => {
   const s = setup();
   s.db.prepare('INSERT INTO machine_state VALUES (?, ?, ?, ?)').run('washer-1', 999000, 1000, 7);
-  s.db.prepare('INSERT INTO machine_state VALUES (?, ?, ?, ?)').run('h3-men-2-washer-1', 888000, 1000, 4);
+  s.db.prepare('INSERT INTO machine_state VALUES (?, ?, ?, ?)').run('h3-men-1-washer-1', 888000, 1000, 4);
   const before = s.db.prepare('SELECT * FROM machine_state ORDER BY id').all();
   const state = s.read(2000);
-  assert.equal(state.machines.length, 30);
+  assert.equal(state.machines.length, 60);
   assert.ok(state.machines.every((machine) => machine.endsAt === null && machine.version === 0));
   assert.deepEqual(s.db.prepare('SELECT * FROM machine_state ORDER BY id').all(), before);
   s.close();
@@ -71,7 +73,7 @@ test('기존 위치 미지정 DB 기록을 보존하면서 새 위치 현황에�
 
 test('미등록 기기는 사용 가능으로 단정하지 않고 null로 제공', () => {
   const state = stateSnapshot([], 1000);
-  assert.equal(state.machines.length, 30);
+  assert.equal(state.machines.length, 60);
   assert.ok(state.machines.every((m) => m.endsAt === null && m.version === 0));
 });
 
@@ -123,19 +125,23 @@ test('다른 층의 같은 기기 번호는 종료 시각과 버전이 독립적
   s.close();
 });
 
-test('다른 생활관과 구역의 같은 기기 번호는 기록이 섞이지 않음', () => {
-  const s = setup();
-  const oldId = 'h3-women-2-washer-1';
-  const newId = 'h2-men-1-washer-1';
-  s.write(oldId, { action: 'start', expectedVersion: 0 }, 1000);
-  s.write(newId, { action: 'start', expectedVersion: 0 }, 2000);
-  const oldBefore = s.read(3000).machines.find((machine) => machine.id === oldId);
-  assert.equal(s.write(newId, { action: 'adjust', expectedVersion: 1, minutes: 12 }, 4000).ends_at, 724000);
-  assert.deepEqual(s.read(5000).machines.find((machine) => machine.id === oldId), oldBefore);
-  s.write(newId, { action: 'clear', expectedVersion: 2 }, 6000);
-  assert.equal(s.read(7000).machines.find((machine) => machine.id === newId).endsAt, null);
-  assert.deepEqual(s.read(7000).machines.find((machine) => machine.id === oldId), oldBefore);
-  s.close();
+test('다른 생활관과 남녀 구역의 같은 기기 번호는 기록이 섞이지 않음', () => {
+  for (const [oldId, newId] of [
+    ['h3-women-2-washer-1', 'h2-men-1-washer-1'],
+    ['h2-men-1-washer-1', 'h2-women-1-washer-1'],
+    ['h3-women-2-washer-1', 'h3-men-2-washer-1'],
+  ]) {
+    const s = setup();
+    s.write(oldId, { action: 'start', expectedVersion: 0 }, 1000);
+    s.write(newId, { action: 'start', expectedVersion: 0 }, 2000);
+    const oldBefore = s.read(3000).machines.find((machine) => machine.id === oldId);
+    assert.equal(s.write(newId, { action: 'adjust', expectedVersion: 1, minutes: 12 }, 4000).ends_at, 724000);
+    assert.deepEqual(s.read(5000).machines.find((machine) => machine.id === oldId), oldBefore);
+    s.write(newId, { action: 'clear', expectedVersion: 2 }, 6000);
+    assert.equal(s.read(7000).machines.find((machine) => machine.id === newId).endsAt, null);
+    assert.deepEqual(s.read(7000).machines.find((machine) => machine.id === oldId), oldBefore);
+    s.close();
+  }
 });
 
 test('예상 종료 시각을 보존하며 종료 후 새 사용을 등록할 수 있음', () => {

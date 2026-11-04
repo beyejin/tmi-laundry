@@ -20,6 +20,11 @@ export const LOCATIONS: readonly Location[] = [
   { id: "h3-women-4", building: 3, wing: "women", floor: 4, label: "3생활관 여자 4층", washerCount: 2, dryerCount: 1 },
   { id: "h3-women-5", building: 3, wing: "women", floor: 5, label: "3생활관 여자 5층", washerCount: 2, dryerCount: 1 },
   { id: "h2-men-1", building: 2, wing: "men", floor: 1, label: "2생활관 남자 1층", washerCount: 12, dryerCount: 6 },
+  { id: "h3-men-2", building: 3, wing: "men", floor: 2, label: "3생활관 남자 2층", washerCount: 2, dryerCount: 1 },
+  { id: "h3-men-3", building: 3, wing: "men", floor: 3, label: "3생활관 남자 3층", washerCount: 2, dryerCount: 1 },
+  { id: "h3-men-4", building: 3, wing: "men", floor: 4, label: "3생활관 남자 4층", washerCount: 2, dryerCount: 1 },
+  { id: "h3-men-5", building: 3, wing: "men", floor: 5, label: "3생활관 남자 5층", washerCount: 2, dryerCount: 1 },
+  { id: "h2-women-1", building: 2, wing: "women", floor: 1, label: "2생활관 여자 1층", washerCount: 12, dryerCount: 6 },
 ];
 
 const EQUIPMENT = [
