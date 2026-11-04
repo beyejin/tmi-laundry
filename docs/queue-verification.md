@@ -7,9 +7,9 @@
 | 항목 | 확인 결과 |
 | --- | --- |
 | GitHub | [TMI 저장소](https://github.com/beyejin/tmi-laundry) |
-| 기능 커밋 | 59fa16f |
+| 기능 커밋 | 59fa16f, 운영자 표시 보완 24254e8 |
 | 운영 주소 | [TMI 세탁실](https://tmi-laundry.hanroona8844.workers.dev/) |
-| Worker 버전 | 7b0a56b6-55b5-429e-b63e-9ad94d77bc2c |
+| Worker 버전 | 8511d5fb-6a88-4294-b024-88ab3c51e3d7 |
 | 주기 설정 | 매분 1회, 실제 빌드의 로컬 scheduled 실행 통과 |
 | 운영 scheduled 실행 | 두 차례 58초 관측에서 미관측. 운영 실행 확인은 남음 |
 | 공개 기기 현황 | 60대, 조회 200 |
