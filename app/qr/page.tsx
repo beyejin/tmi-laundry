@@ -31,7 +31,7 @@ export default async function QrPage({ searchParams }: { searchParams: Promise<{
       </HStack>
       <VStack as="section" gap={3} className="qr-intro">
         <h1>기기별 QR 안내문</h1>
-        <p>설치할 세탁실을 선택해 주세요.<br />선택한 층의 기기 3장만 인쇄할 수 있어요.</p>
+        <p>설치할 세탁실을 선택해 주세요.<br />선택한 세탁실의 기기별 안내문을 인쇄할 수 있어요.</p>
         {params.location !== undefined && !location && <p className="qr-location-error" role="alert">선택한 위치를 찾을 수 없어요. 아래에서 세탁실을 다시 선택해 주세요.</p>}
         <form action="/qr" method="get" className="qr-location-form">
           <HStack gap={3} vAlign="end" wrap="wrap" className="qr-location-controls">
@@ -46,7 +46,7 @@ export default async function QrPage({ searchParams }: { searchParams: Promise<{
           </HStack>
         </form>
         {location ? <>
-          <p><strong>{location.label}</strong><br />인쇄 후 위치와 기기 이름을 확인하고 붙여 주세요.</p>
+          <p><strong>{location.label}</strong><br />세탁기 {location.washerCount}대, 건조기 {location.dryerCount}대의 QR {codes.length}장이에요.<br />인쇄 후 위치와 기기 이름을 확인하고 붙여 주세요.</p>
           <PrintButton />
         </> : <p>시설 구성이 확인된 세탁실만 선택할 수 있어요.</p>}
       </VStack>

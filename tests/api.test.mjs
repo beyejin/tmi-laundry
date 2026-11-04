@@ -2,19 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MACHINES } from '../lib/laundry.ts';
 
-// 로컬 시험 서버에서 3생활관 여자 2층과 3층의 지정 기기만 변경합니다.
+// 로컬 시험 서버에서 두 생활관의 지정 기기만 변경합니다.
 const BASE = 'http://127.0.0.1:5173';
-const TEST_IDS = ['h3-women-2-washer-2', 'h3-women-2-dryer-1', 'h3-women-3-washer-2'];
+const TEST_IDS = ['h3-women-2-washer-2', 'h3-women-2-dryer-1', 'h3-women-3-washer-2', 'h2-men-1-washer-12', 'h2-men-1-dryer-6'];
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE}${path}`, {
     ...options,
     signal: AbortSignal.timeout(15_000),
   });
+  const text = await response.text();
+  assert.match(response.headers.get('content-type') ?? '', /application\/json/, `${path}: ${response.status} ${text.slice(0, 200)}`);
   return {
     status: response.status,
     headers: response.headers,
-    body: await response.json(),
+    body: JSON.parse(text),
   };
 }
 
@@ -58,13 +60,17 @@ test('로컬 공유 API 통합 검증', async (t) => {
         response.body.machines.map((item) => item.id).sort(),
         MACHINES.map((item) => item.id).sort(),
       );
+      assert.equal(response.body.machines.length, 30);
+      const maleHall = response.body.machines.filter((item) => item.locationId === 'h2-men-1');
+      assert.equal(maleHall.filter((item) => item.type === 'washer').length, 12);
+      assert.equal(maleHall.filter((item) => item.type === 'dryer').length, 6);
       for (const id of TEST_IDS) {
         assert.equal(machine(response.body, id).endsAt, null);
       }
     });
 
     await t.test('기존 ID와 미등록 생활관 또는 구역 또는 층은 404', async () => {
-      for (const id of ['not-a-machine', 'washer-1', 'washer-2', 'dryer-1', 'h2-women-2-washer-1', 'h3-men-2-washer-1', 'h3-women-1-washer-1']) {
+      for (const id of ['not-a-machine', 'washer-1', 'washer-2', 'dryer-1', 'h2-women-2-washer-1', 'h3-men-2-washer-1', 'h3-women-1-washer-1', 'h2-men-1-washer-13', 'h2-men-1-dryer-7']) {
         const response = await request(`/api/machines/${id}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -151,6 +157,20 @@ test('로컬 공유 API 통합 검증', async (t) => {
       assert.deepEqual(machine(after, 'h3-women-2-dryer-1'), machine(before, 'h3-women-2-dryer-1'));
     });
 
+    await t.test('2생활관 남자 마지막 번호 기기를 시작해도 다른 생활관 상태 보존', async () => {
+      for (const [id, minutes] of [['h2-men-1-washer-12', 36], ['h2-men-1-dryer-6', 45]]) {
+        const before = (await read()).body;
+        const previous = machine(before, id);
+        const response = await post(id, { action: 'start', expectedVersion: previous.version });
+        assert.equal(response.status, 200);
+        assertMinutes(response.body, id, minutes);
+        assert.equal(machine(response.body, id).version, previous.version + 1);
+        const after = (await read()).body;
+        assert.deepEqual(machine(after, id), machine(response.body, id));
+        assert.deepEqual(after.machines.filter((item) => item.id !== id), before.machines.filter((item) => item.id !== id));
+      }
+    });
+
     await t.test('최신 버전이어도 가동 중 재시작은 409', async () => {
       const before = machine((await read()).body, 'h3-women-2-dryer-1');
       const response = await post('h3-women-2-dryer-1', {
@@ -178,7 +198,7 @@ test('로컬 공유 API 통합 검증', async (t) => {
       assert.deepEqual(machine(after, 'h3-women-3-washer-2'), machine(before, 'h3-women-3-washer-2'));
     });
   } finally {
-    // 중간 검증 실패가 있어도 시험한 세 기기를 각각 정리합니다.
+    // 중간 검증 실패가 있어도 시험한 다섯 기기를 각각 정리합니다.
     const cleanupErrors = [];
     for (const id of TEST_IDS) {
       try {
@@ -194,7 +214,7 @@ test('로컬 공유 API 통합 검증', async (t) => {
         cleanupErrors.push(error);
       }
     }
-    await t.test('시험 종료 후 세 기기의 등록 취소와 null 재조회', () => {
+    await t.test('시험 종료 후 다섯 기기의 등록 취소와 null 재조회', () => {
       if (cleanupErrors.length) throw new AggregateError(cleanupErrors, '시험 기기 정리 실패');
     });
   }

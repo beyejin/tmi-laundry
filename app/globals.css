@@ -233,3 +233,11 @@ h1, h2, p { margin: 0; }
   .floor-picker > .astryx-segmented-control { flex: 1; }
   .page-heading .floor-label { position: static; }
 }
+
+.machine-type-filter { margin-bottom: var(--spacing-4); }
+.machine-type-filter .astryx-segmented-control-item { min-height: var(--spacing-11); }
+.large-laundry { align-items: start; }
+.large-laundry .detail-panel { position: sticky; top: var(--spacing-4); scroll-margin-top: var(--spacing-4); }
+@media (max-width: 47.5rem) {
+  .large-laundry .detail-panel { position: static; }
+}

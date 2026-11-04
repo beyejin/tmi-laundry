@@ -10,26 +10,31 @@ export type Location = {
   wing: (typeof WINGS)[number]["id"];
   floor: number;
   label: string;
+  washerCount: number;
+  dryerCount: number;
 };
 
 export const LOCATIONS: readonly Location[] = [
-  { id: "h3-women-2", building: 3, wing: "women", floor: 2, label: "3생활관 여자 2층" },
-  { id: "h3-women-3", building: 3, wing: "women", floor: 3, label: "3생활관 여자 3층" },
-  { id: "h3-women-4", building: 3, wing: "women", floor: 4, label: "3생활관 여자 4층" },
-  { id: "h3-women-5", building: 3, wing: "women", floor: 5, label: "3생활관 여자 5층" },
+  { id: "h3-women-2", building: 3, wing: "women", floor: 2, label: "3생활관 여자 2층", washerCount: 2, dryerCount: 1 },
+  { id: "h3-women-3", building: 3, wing: "women", floor: 3, label: "3생활관 여자 3층", washerCount: 2, dryerCount: 1 },
+  { id: "h3-women-4", building: 3, wing: "women", floor: 4, label: "3생활관 여자 4층", washerCount: 2, dryerCount: 1 },
+  { id: "h3-women-5", building: 3, wing: "women", floor: 5, label: "3생활관 여자 5층", washerCount: 2, dryerCount: 1 },
+  { id: "h2-men-1", building: 2, wing: "men", floor: 1, label: "2생활관 남자 1층", washerCount: 12, dryerCount: 6 },
 ];
 
 const EQUIPMENT = [
-  { id: "washer-1", name: "세탁기 1", type: "washer", defaultMinutes: 36 },
-  { id: "washer-2", name: "세탁기 2", type: "washer", defaultMinutes: 36 },
-  { id: "dryer-1", name: "건조기 1", type: "dryer", defaultMinutes: 45 },
+  { name: "세탁기", type: "washer", defaultMinutes: 36 },
+  { name: "건조기", type: "dryer", defaultMinutes: 45 },
 ] as const;
 
-export const MACHINES = LOCATIONS.flatMap((location) => EQUIPMENT.map((machine) => ({
-  ...machine,
-  id: `${location.id}-${machine.id}`,
-  locationId: location.id,
-})));
+export const MACHINES = LOCATIONS.flatMap((location) => EQUIPMENT.flatMap((machine) =>
+  Array.from({ length: machine.type === "washer" ? location.washerCount : location.dryerCount }, (_, index) => ({
+    ...machine,
+    id: `${location.id}-${machine.type}-${index + 1}`,
+    name: `${machine.name} ${index + 1}`,
+    locationId: location.id,
+  })),
+));
 
 export type MachineId = (typeof MACHINES)[number]["id"];
 export type Command = { action: "start" | "adjust" | "clear"; expectedVersion: number; minutes?: number };

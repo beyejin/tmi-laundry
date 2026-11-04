@@ -50,6 +50,7 @@ export default function Home() {
   const machines = allMachines.filter((machine) => machine.locationId === locationId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fromQr, setFromQr] = useState(false);
+  const [machineType, setMachineType] = useState<"all" | "washer" | "dryer">("all");
   const [proto, setProto] = useState(false);
   const [sortMode, setSortMode] = useState<MachineOrder>("available");
   const [fastDemo, setFastDemo] = useState(false);
@@ -82,6 +83,7 @@ export default function Home() {
       setLocationId(nextLocation?.id ?? null);
       setSelectedId(machine?.id ?? null);
       setFromQr(Boolean(machine));
+      setMachineType(machine?.type ?? "all");
       setDialog(null);
       setFastDemo(params.get("proto") === "1" && params.get("fast") === "1");
       if (machineId && !machine) setMessage("이 QR의 기기 위치를 확인할 수 없어요. 생활관, 구역, 층을 확인한 뒤 기기를 선택해 주세요.");
@@ -99,6 +101,11 @@ export default function Home() {
     }
   }, [dialog]);
 
+  useEffect(() => {
+    if (!selectedId || machines.length <= 3 || !window.matchMedia("(max-width: 47.5rem)").matches) return;
+    document.getElementById("machine-detail")?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [selectedId, machines.length]);
+
   function selectLocation(nextBuilding: 2 | 3, nextWing: "women" | "men", nextId?: string) {
     const nextLocation = LOCATIONS.find((item) => item.building === nextBuilding && item.wing === nextWing && (!nextId || item.id === nextId));
     setBuilding(nextBuilding);
@@ -106,6 +113,7 @@ export default function Home() {
     setLocationId(nextLocation?.id ?? null);
     setSelectedId(null);
     setFromQr(false);
+    setMachineType("all");
     setMessage("");
     const params = new URLSearchParams();
     if (nextLocation) params.set("location", nextLocation.id);
@@ -153,6 +161,7 @@ export default function Home() {
   const counts = machines.reduce((total, machine) => { total[machineStatus(machine, currentTime)] += 1; return total; }, { running: 0, finished: 0, unknown: 0 });
   const sortableMachines = machines.map((machine) => ({ ...machine, status: machineStatus(machine, currentTime), remainingSeconds: remainingSeconds(machine, currentTime) }));
   const orderedMachines = proto && loaded ? orderMachines(sortableMachines, sortMode) : machines;
+  const visibleMachines = orderedMachines.filter((machine) => machineType === "all" || machine.type === machineType);
   const availableCounts = countAvailable(sortableMachines);
   const selectedAvailable = Boolean(proto && loaded && selectedStatus === "unknown");
 
@@ -185,12 +194,13 @@ export default function Home() {
 
         <HStack hAlign="between" vAlign="center" className="sync-row"><span className={`connection-label ${connection === "offline" ? "is-offline" : ""}`}><StatusDot variant={connection === "offline" ? "warning" : connection === "online" ? "success" : "neutral"} label={connection === "online" ? "연결됨" : "연결 확인 필요"} />{connection === "loading" ? "현황을 불러오는 중이에요" : connection === "offline" ? "마지막 등록 현황" : "10초마다 자동 확인"}</span><HStack gap={2} vAlign="center"><span className="sync-time">{lastSync ? `${timeLabel(lastSync)} 확인` : "연결 확인 중"}</span><button className="refresh-button" aria-label="기기 현황 새로고침" onClick={() => void refresh()} disabled={refreshing || pending !== null}><RefreshCw size={15} className={refreshing ? "is-spinning" : ""} /><span>새로고침</span></button></HStack></HStack>
 
-        <Grid columns={2} gap={4} className="laundry-layout" style={{ gridTemplateColumns: "var(--laundry-columns)" }}>
+        <Grid columns={2} gap={4} className={`laundry-layout ${machines.length > 3 ? "large-laundry" : ""}`} style={{ gridTemplateColumns: "var(--laundry-columns)" }}>
           <section className="board" id="machine-status" aria-labelledby="board-title">
             <HStack hAlign="between" vAlign="center" className="board-heading"><h2 id="board-title">{location.floor}층 기기 현황</h2><span>기기를 눌러 선택해 주세요</span></HStack>
             {proto && <EmptyFirstBar mode={sortMode} onMode={setSortMode} loaded={loaded} washers={availableCounts.washer} dryers={availableCounts.dryer} isDisabled={pending !== null} />}
+            {machines.length > 3 && <VStack gap={2} className="machine-type-filter"><span className="location-label">기기 종류</span><SegmentedControl label="기기 종류 선택" value={machineType} onChange={(value) => { setMachineType(value === "washer" ? "washer" : value === "dryer" ? "dryer" : "all"); selectMachine(null); }} size="lg" layout="fill" isDisabled={pending !== null}><SegmentedControlItem value="all" label={`전체 ${machines.length}`} /><SegmentedControlItem value="washer" label={`세탁기 ${location.washerCount}`} /><SegmentedControlItem value="dryer" label={`건조기 ${location.dryerCount}`} /></SegmentedControl></VStack>}
             <Grid columns={3} gap={2} className="machine-grid">
-              {orderedMachines.map((machine) => {
+              {visibleMachines.map((machine) => {
                 const status = machineStatus(machine, currentTime);
                 const seconds = remainingSeconds(machine, currentTime);
                 const isSelected = selectedId === machine.id;
@@ -211,7 +221,7 @@ export default function Home() {
             <p className="board-note"><Info size={15} /><span>{proto ? <>등록이 없는 기기를 빈 기기로 보여 드려요.<br />예상 종료는 빨래가 남아 있을 수 있어요.</> : <>사용자가 등록한 예상 시간이에요.<br />미확인이나 예상 종료가 빈 기기를 뜻하지는 않아요.</>}</span></p>
           </section>
 
-          <VStack as="section" gap={0} className={`detail-panel ${selected ? "has-selection" : ""}`} aria-labelledby="detail-title">
+          <VStack as="section" gap={0} id="machine-detail" className={`detail-panel ${selected ? "has-selection" : ""}`} aria-labelledby="detail-title">
             {selected ? <>
               <HStack hAlign="between" vAlign="center" className="detail-heading"><VStack gap={0}><span className="detail-eyebrow">{fromQr ? "QR로 선택한 기기" : "선택한 기기"}</span><h2 id="detail-title">{selected.name}</h2></VStack><span className={`detail-status status-${selectedStatus}${selectedAvailable ? " is-available" : ""}`}><StatusDot variant={selectedAvailable ? "success" : statusVariants[selectedStatus]} label={selectedAvailable ? "지금 쓸 수 있어요" : statusNames[selectedStatus]} />{!loaded ? "확인 중" : selectedAvailable ? "지금 쓸 수 있어요" : statusNames[selectedStatus]}</span></HStack>
               <HStack hAlign="between" wrap="wrap" className="detail-readout"><span>{!loaded ? "현황을 확인하고 있어요." : selectedStatus === "running" ? `${timeLabel(selected.endsAt!)} 종료 예상` : selectedStatus === "finished" ? "빨래가 남아 있을 수 있어요." : "등록된 시간 정보가 없어요."}</span><span>기본 {selected.defaultMinutes}분</span></HStack>
