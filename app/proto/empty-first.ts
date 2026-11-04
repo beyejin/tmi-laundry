@@ -1,4 +1,6 @@
-export type RegisteredStatus = "unknown" | "running" | "finished";
+import type { MachineStatus } from "@/lib/laundry";
+
+export type RegisteredStatus = MachineStatus;
 export type MachineOrder = "available" | "number";
 
 export type SortableMachine = {
@@ -16,8 +18,9 @@ export function isAvailableNow(machine: SortableMachine) {
 
 function availabilityRank(machine: SortableMachine) {
   if (machine.status === "unknown") return 0;
-  if (machine.status === "running") return 1;
-  return 2;
+  if (machine.status === "stale") return 1;
+  if (machine.status === "running") return 2;
+  return 3;
 }
 
 export function compareAvailableFirst(a: SortableMachine, b: SortableMachine) {

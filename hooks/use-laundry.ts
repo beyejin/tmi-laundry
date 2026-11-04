@@ -61,7 +61,7 @@ export function useLaundry() {
   useEffect(() => {
     mounted.current = true;
     const initialRead = window.setTimeout(() => void refresh(), 0);
-    const poll = window.setInterval(() => void refresh(), 10_000);
+    const poll = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 10_000);
     const tick = window.setInterval(() => setNow(Date.now()), 1_000);
     const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
     document.addEventListener("visibilitychange", onVisible);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { BUILDINGS, WINGS, LOCATIONS, MACHINES, findLocation, findMachine, mutationQuery, parseCommand, stateSnapshot } from '../lib/laundry.ts';
+import { BUILDINGS, WINGS, LOCATIONS, MACHINES, STALE_AFTER_MS, findLocation, findMachine, machineStatus, mutationQuery, parseCommand, stateSnapshot } from '../lib/laundry.ts';
 
 function setup() {
   const db = new DatabaseSync(':memory:');
@@ -132,4 +132,23 @@ test('잘못된 시간과 버전을 거부', () => {
   assert.equal(parseCommand(null), null);
   assert.equal(parseCommand({ action: 'unknown', expectedVersion: 0 }), null);
   assert.deepEqual(parseCommand({ action: 'adjust', expectedVersion: 0, minutes: 180 }), { action: 'adjust', expectedVersion: 0, minutes: 180 });
+});
+
+test('machineStatus 경계: 미등록, 1ms 남음, 정확히 종료, 29분59초, 30분', () => {
+  const now = 1_000_000_000;
+  assert.equal(STALE_AFTER_MS, 30 * 60_000);
+  assert.equal(machineStatus(null, now), 'unknown');
+  assert.equal(machineStatus(now + 1, now), 'running');
+  assert.equal(machineStatus(now, now), 'finished');
+  assert.equal(machineStatus(now - (STALE_AFTER_MS - 1_000), now), 'finished');
+  assert.equal(machineStatus(now - STALE_AFTER_MS, now), 'stale');
+  assert.equal(machineStatus(now - STALE_AFTER_MS - 60_000, now), 'stale');
+});
+
+test('machineStatus의 running은 기존 남은 초 계산(올림)이 0보다 큰 경우와 같음', () => {
+  const now = 1_000_000_000;
+  for (const diff of [-1_000, -1, 0, 1, 999, 1_000, 1_001]) {
+    const seconds = Math.max(0, Math.ceil(diff / 1_000));
+    assert.equal(machineStatus(now + diff, now) === 'running', seconds > 0, `diff ${diff}`);
+  }
 });
