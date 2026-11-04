@@ -5,13 +5,18 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  let body: string;
+  try {
+    body = await request.text();
+  } catch {
+    return errorResponse("입력값을 확인해 주세요.", 400);
+  }
   const machine = findMachine(id);
   if (!machine) return errorResponse("등록되지 않은 기기예요.", 404);
   if (!request.headers.get("content-type")?.includes("application/json")) return errorResponse("요청 형식을 확인해 주세요.", 415);
   if (request.headers.get("sec-fetch-site") === "cross-site") return errorResponse("세탁실 화면에서 등록해 주세요.", 403);
   let command;
   try {
-    const body = await request.text();
     if (body.length > 1024) return errorResponse("요청이 너무 커요.", 413);
     command = parseCommand(JSON.parse(body));
   } catch {
