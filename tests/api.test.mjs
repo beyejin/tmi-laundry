@@ -255,7 +255,9 @@ test('로컬 공유 API 통합 검증', async (t) => {
         assert.equal(busy.status, 409);
         assert.match(busy.body.error, /아직 사용 중/);
         assert.equal((await wait({ action: 'skip', id: 'missing-entry' })).status, 409);
-        assert.equal((await wait({ action: 'skip' })).status, 400);
+        const malformed = await wait({ action: 'skip' });
+        assert.equal(malformed.status, 400);
+        assert.match(malformed.body.error, /대기 항목을 확인해 주세요/);
         const after = (await read()).body;
         assert.ok(after.waitlist.some((entry) => entry.id === first.body.joined.id));
         assert.ok(after.waitlist.some((entry) => entry.id === second.body.joined.id));

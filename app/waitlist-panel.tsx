@@ -40,7 +40,7 @@ type PanelProps = {
   onJoin: (locationId: string, nickname: string) => Promise<boolean>;
   onLeave: (entryId: string) => Promise<boolean>;
   lastChangeAt: number | null;
-  onSkip: (entryId: string, position: number) => Promise<boolean>;
+  onSkip: (entryId: string) => Promise<boolean>;
 };
 
 export function WaitlistPanel({ locationId, locationLabel, dryer, entries, mine, currentTime, loaded, disabled, dryerInService, lastChangeAt, onJoin, onLeave, onSkip }: PanelProps) {
@@ -83,7 +83,7 @@ export function WaitlistPanel({ locationId, locationLabel, dryer, entries, mine,
             {index === 0 && verdict && !verdict.ok && verdict.reason === "wait" && <span className="waitlist-turn">차례예요 · {Math.ceil((verdict.waitMs ?? 0) / 60_000)}분 안에 시작해 주세요</span>}
             {index === 0 && verdict?.ok && <span className="waitlist-turn is-passed">차례 지남 {turnMinutes}분{isMine && " · 지금 시작해 주세요"}</span>}
           </VStack>
-          {index === 0 && verdict?.ok && !isMine && <button type="button" className={`waitlist-skip ${armedSkip === entry.id ? "is-armed" : ""}`} disabled={disabled} onClick={() => { if (armedSkip === entry.id) { setArmedSkip(null); void onSkip(entry.id, index + 1); } else setArmedSkip(entry.id); }}>{armedSkip === entry.id ? "한 번 더 누르면 건너뛰어요" : "건너뛰기"}</button>}
+          {index === 0 && verdict?.ok && !isMine && <button type="button" className={`waitlist-skip ${armedSkip === entry.id ? "is-armed" : ""}`} disabled={disabled} onClick={() => { if (armedSkip === entry.id) { setArmedSkip(null); void onSkip(entry.id); } else setArmedSkip(entry.id); }}>{armedSkip === entry.id ? "한 번 더 누르면 건너뛰어요" : "건너뛰기"}</button>}
           {isMine && <button type="button" className="waitlist-cancel" disabled={disabled} onClick={() => void onLeave(entry.id)}>대기 취소</button>}
         </li>;
       })}

@@ -7,7 +7,7 @@ const NOW = 1_800_000_000_000;
 const bind = (q) => Object.fromEntries(q.values.map((value, index) => [String(index + 1), value]));
 
 test('이벤트 종류 상수', () => {
-  assert.deepEqual([...EVENT_KINDS], ['start', 'adjust', 'clear', 'waitlist_join', 'waitlist_leave', 'waitlist_turn', 'report', 'service_on', 'service_off', 'admin_reset', 'admin_remove', 'waitlist_skip']);
+  assert.deepEqual([...EVENT_KINDS], ['start', 'adjust', 'clear', 'waitlist_join', 'waitlist_leave', 'waitlist_turn', 'report', 'service_on', 'service_off', 'admin_reset', 'admin_remove', 'waitlist_skip', 'waitlist_head_change']);
   assert.equal(new Set(EVENT_KINDS).size, EVENT_KINDS.length);
 });
 
