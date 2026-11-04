@@ -18,13 +18,13 @@ export async function POST(request: Request) {
       const insert = joinQuery({ id, locationId: command.locationId, nickname: command.nickname, ownerHash: await hashToken(token) }, now);
       const [, inserted] = await db.batch([db.prepare(cleanup.sql).bind(...cleanup.values), db.prepare(insert.sql).bind(...insert.values)]);
       if (!inserted.results.length) return errorResponse("대기 인원이 가득 찼거나 같은 이름이 이미 있어요.", 409);
-      await logEvent({ kind: "waitlist_join", locationId: command.locationId });
+      await logEvent({ kind: "waitlist_join", locationId: command.locationId, at: now });
       return await snapshotResponse({ joined: { id, token } });
     }
     const query = leaveQuery(command.id, await hashToken(command.token));
     const removed = await db.prepare(query.sql).bind(...query.values).first<{ id: string; location_id: string }>();
     if (!removed) return errorResponse("이미 빠졌거나 내 대기 기록이 아니에요.", 404);
-    await logEvent({ kind: "waitlist_leave", locationId: removed.location_id });
+    await logEvent({ kind: "waitlist_leave", locationId: removed.location_id, at: now });
     return await snapshotResponse();
   } catch (error) {
     console.error("Waitlist update failed", error);

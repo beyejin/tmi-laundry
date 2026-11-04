@@ -32,8 +32,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     if (!updated) return errorResponse("다른 등록이 먼저 반영됐어요. 최신 현황을 확인하고 다시 시도해 주세요.", 409);
     const prevRemainingSec = command.action === "adjust" && previous && previous.version === command.expectedVersion && previous.ends_at !== null ? Math.round((previous.ends_at - now) / 1000) : null;
-    await logEvent({ kind: command.action, locationId: machine.locationId, machineId: machine.id, minutes: command.action === "start" ? machine.defaultMinutes : command.action === "adjust" ? command.minutes : null, prevRemainingSec });
-    if (waitlistRemoved) await logEvent({ kind: "waitlist_turn", locationId: machine.locationId, machineId: machine.id });
+    await logEvent({ kind: command.action, locationId: machine.locationId, machineId: machine.id, at: now, minutes: command.action === "start" ? machine.defaultMinutes : command.action === "adjust" ? command.minutes : null, prevRemainingSec });
+    if (waitlistRemoved) await logEvent({ kind: "waitlist_turn", locationId: machine.locationId, machineId: machine.id, at: now });
     return await snapshotResponse(waitlistRemoved ? { waitlistRemoved: true } : {});
   } catch (error) {
     console.error("Laundry update failed", error);

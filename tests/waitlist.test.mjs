@@ -168,3 +168,22 @@ test('대기 정리: 남의 해시나 다른 층 항목은 시작이 성공해�
   assert.equal(t.rows().length, 2);
   t.db.close();
 });
+
+// 같은 밀리초 경합: 이긴 요청의 행이 version = 기대값+1, updated_at = now를 이미 만족해서 EXISTS만으로는 진 요청도 통과해요.
+for (const expectedVersion of [0, 3]) {
+  test(`대기 정리: 같은 밀리초에 진 요청은 자기 항목을 지우지 못함 (expectedVersion ${expectedVersion})`, () => {
+    const t = setup();
+    t.join('win', '301호', NOW, LOC, 'winner');
+    t.join('lose', '302호', NOW, LOC, 'loser');
+    if (expectedVersion > 0) t.db.prepare('INSERT INTO machine_state (id, ends_at, updated_at, version) VALUES (?1, NULL, ?2, ?3)').run(DRYER, NOW, expectedVersion);
+    const same = { expectedVersion, now: NOW + 5_000 };
+    const winner = startWithTurn(t, { ...same, entryId: 'win', hash: 'winner' });
+    assert.equal(winner.started.version, expectedVersion + 1);
+    assert.equal(winner.removed?.id, 'win');
+    const loser = startWithTurn(t, { ...same, entryId: 'lose', hash: 'loser' });
+    assert.equal(loser.started, undefined);
+    assert.equal(loser.removed, undefined);
+    assert.deepEqual(t.rows().map((row) => row.id), ['lose']);
+    t.db.close();
+  });
+}

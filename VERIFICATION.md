@@ -74,7 +74,7 @@ API 검증에는 잘못된 입력 거절, 36분 및 45분 계산, 중복 시작 
 
 2026년 11월 4일 로컬에서 확인했습니다.
 
-- TypeScript 검사, 단위 테스트 41개, 배포 빌드 통과
+- TypeScript 검사, 단위 테스트 45개, 배포 빌드 통과
 - 로컬 D1 마이그레이션 0000, 0001, 0002 적용 후 `npm run preview`에서 API 테스트 14개 통과
 - API 테스트 후 `event_log` 집계: adjust 1, clear 5, start 5, waitlist_join 2, waitlist_leave 1, waitlist_turn 1. 시간 수정 기록의 prev_remaining_sec은 2160초(36분)로 기록됨
 - 390px 화면에서 4층 대기 등록 후 같은 브라우저로 건조기 시작: `건조기 1 45분을 등록했어요. 차례가 되어 대기 명단에서 뺐어요.` 표시, 명단 0명, 브라우저 저장소의 내 대기 토큰 정리, 콘솔 오류 없음, scrollWidth 375
