@@ -186,6 +186,8 @@ test('통계 쿼리: kind별 건수와 세탁기/건조기 시작 수, 기간, �
   assert.equal(everything.counts.start, 4);
   assert.equal(everything.washerStarts, 2);
   assert.deepEqual(summarizeStats([]), { counts: {}, washerStarts: 0, dryerStarts: 0 });
+  // 맨 앞 변동 표식은 내부용이라 통계에 나오지 않아요.
+  assert.deepEqual(summarizeStats([{ kind: 'waitlist_head_change', n: 4, washer: null, dryer: null }, { kind: 'waitlist_skip', n: 1, washer: null, dryer: null }]).counts, { waitlist_skip: 1 });
   const hours = hourlyDistribution(all(db, hourlyQuery(NOW - 7 * DAY_MS)));
   assert.equal(hours.length, 24);
   assert.equal(hours.reduce((a, b) => a + b, 0), 3);

@@ -2,17 +2,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MACHINES } from '../lib/laundry.ts';
 
-// 로컬 시험 서버에서 3생활관 여자 2층, 3층, 5층(건조기)의 지정 기기만 변경합니다.
+// 로컬 시험 서버에서 3생활관 여자 2층, 3층, 4층(건조기), 5층(건조기)의 지정 기기만 변경합니다.
 const BASE = 'http://127.0.0.1:5173';
 // 관리자 API 시험은 ADMIN_TOKEN 환경변수가 있을 때만 실행해요(토큰은 코드에 두지 않아요). preview 서버도 같은 값을 .dev.vars로 받아야 해요.
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 const REPORT_ID = 'h3-women-3-dryer-1';
-const TEST_IDS = ['h3-women-2-washer-2', 'h3-women-2-dryer-1', 'h3-women-3-washer-2', 'h3-women-5-dryer-1'];
+const TEST_IDS = ['h3-women-2-washer-2', 'h3-women-2-dryer-1', 'h3-women-3-washer-2', 'h3-women-5-dryer-1', 'h3-women-4-dryer-1'];
 
-// 로컬 wrangler dev(workerd)는 가끔 요청 사이에 워커를 다시 띄우며 "restarted mid-request" 503을 돌려줘요(PR B 기준 코드에서도 재현). 코드 문제가 아니라 시험이 흔들리지 않도록 이 경우만 다시 보내요.
+// 로컬 wrangler dev(workerd)는 가끔 요청 사이에 워커를 다시 띄우며 "restarted mid-request" 503을 돌려주거나,
+// 드물게 진행 중이던 요청이 응답 없이 멈춰요(PR B 기준 코드에서도 재현, 같은 요청만 반복하면 재현되지 않음).
+// 코드 문제가 아니라 시험이 흔들리지 않도록 503 재시작은 다시 보내고, 시간 초과는 같은 요청을 다시 보내도 결과가 같은 GET만 한 번 더 보내요.
 async function fetchRetry(url, options = {}) {
+  const idempotent = !options.method || options.method === 'GET';
   for (let attempt = 0; ; attempt += 1) {
-    const response = await fetch(url, { ...options, signal: AbortSignal.timeout(15_000) });
+    let response;
+    try {
+      response = await fetch(url, { ...options, signal: AbortSignal.timeout(15_000) });
+    } catch (error) {
+      if (idempotent && error?.name === 'TimeoutError' && attempt < 1) continue;
+      throw error;
+    }
     if (response.status !== 503 || attempt >= 3) return response;
     if (!(await response.clone().text()).includes('restarted mid-request')) return response;
   }
@@ -231,6 +240,40 @@ test('로컬 공유 API 통합 검증', async (t) => {
         assert.ok(!(await read()).body.waitlist.some((entry) => entry.id === id));
       } finally {
         await wait({ action: 'leave', id, token });
+      }
+    });
+    // 차례가 된 지 10분이 지난 정상 건너뛰기는 API 시험에서 시간을 조작할 수 없어 tests/waitlist.test.mjs의 단위 테스트(canSkip, skipQuery)로만 확인해요.
+    await t.test('건너뛰기: 맨 앞이 아니면 409, 방금 차례가 된 맨 앞도 409, 건조기 사용 중이면 409, 명단 유지', async () => {
+      const dryerId = 'h3-women-4-dryer-1';
+      const wait = (body) => request('/api/waitlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const suffix = Date.now() % 100000;
+      const first = await wait({ action: 'join', locationId: 'h3-women-4', nickname: `앞${suffix}` });
+      const second = await wait({ action: 'join', locationId: 'h3-women-4', nickname: `뒤${suffix}` });
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      try {
+        const notHead = await wait({ action: 'skip', id: second.body.joined.id });
+        assert.equal(notHead.status, 409);
+        assert.match(notHead.body.error, /차례가 바뀌었어요/);
+        const fresh = await wait({ action: 'skip', id: first.body.joined.id });
+        assert.equal(fresh.status, 409);
+        assert.match(fresh.body.error, /10분이 지나야/);
+        const started = await post(dryerId, { action: 'start', expectedVersion: machine((await read()).body, dryerId).version });
+        assert.equal(started.status, 200);
+        const busy = await wait({ action: 'skip', id: first.body.joined.id });
+        assert.equal(busy.status, 409);
+        assert.match(busy.body.error, /아직 사용 중/);
+        assert.equal((await wait({ action: 'skip', id: 'missing-entry' })).status, 409);
+        const malformed = await wait({ action: 'skip' });
+        assert.equal(malformed.status, 400);
+        assert.match(malformed.body.error, /대기 항목을 확인해 주세요/);
+        const after = (await read()).body;
+        assert.ok(after.waitlist.some((entry) => entry.id === first.body.joined.id));
+        assert.ok(after.waitlist.some((entry) => entry.id === second.body.joined.id));
+        assert.equal(typeof after.waitlistLastChange, 'object');
+      } finally {
+        await wait({ action: 'leave', id: first.body.joined.id, token: first.body.joined.token });
+        await wait({ action: 'leave', id: second.body.joined.id, token: second.body.joined.token });
       }
     });
     await t.test('관리자 API는 토큰이 없거나 틀리면 401', async () => {

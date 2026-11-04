@@ -115,6 +115,7 @@ export function summarizeStats(rows: StatRow[]): PeriodStats {
   let washerStarts = 0;
   let dryerStarts = 0;
   for (const row of rows) {
+    if (row.kind === "waitlist_head_change") continue; // 건너뛰기 규칙용 내부 표식이라 통계 표에는 내보내지 않아요(CSV에는 남아요).
     counts[row.kind] = row.n;
     if (row.kind === "start") { washerStarts = row.washer ?? 0; dryerStarts = row.dryer ?? 0; }
   }

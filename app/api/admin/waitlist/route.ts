@@ -1,5 +1,5 @@
 import { adminRemoveQuery, parseAdminWaitlistCommand } from "@/lib/admin";
-import { adminResponse, database, errorResponse, logEvent, readJsonBody, requireAdmin } from "@/lib/laundry-store";
+import { adminResponse, database, errorResponse, headChangeStatement, logEvent, readEntryMeta, readJsonBody, requireAdmin } from "@/lib/laundry-store";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,9 @@ export async function POST(request: Request) {
   try {
     const now = Date.now();
     const query = adminRemoveQuery(command.id);
-    const removed = await database().prepare(query.sql).bind(...query.values).first<{ id: string; location_id: string }>();
+    const meta = await readEntryMeta(command.id);
+    const [deleted] = await database().batch([database().prepare(query.sql).bind(...query.values), ...(meta ? [headChangeStatement(command.id, meta, now)] : [])]);
+    const removed = deleted.results[0] as { id: string; location_id: string } | undefined;
     if (!removed) return errorResponse("이미 빠진 대기 항목이에요.", 404);
     await logEvent({ kind: "admin_remove", locationId: removed.location_id, at: now });
     return await adminResponse({ stats: false });

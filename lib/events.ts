@@ -1,5 +1,4 @@
-// D에서 waitlist_skip을 추가해요.
-export const EVENT_KINDS = ["start", "adjust", "clear", "waitlist_join", "waitlist_leave", "waitlist_turn", "report", "service_on", "service_off", "admin_reset", "admin_remove"] as const;
+export const EVENT_KINDS = ["start", "adjust", "clear", "waitlist_join", "waitlist_leave", "waitlist_turn", "report", "service_on", "service_off", "admin_reset", "admin_remove", "waitlist_skip", "waitlist_head_change"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 export type EventInput = { kind: EventKind; locationId: string; machineId?: string | null; minutes?: number | null; prevRemainingSec?: number | null; at?: number };
 

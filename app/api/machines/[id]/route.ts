@@ -1,5 +1,5 @@
 import { SERVICE_MESSAGE, findMachine, mutationQuery, parseCommand, type StateRow } from "@/lib/laundry";
-import { database, errorResponse, logEvent, readJsonBody, snapshotResponse } from "@/lib/laundry-store";
+import { database, errorResponse, headChangeStatement, logEvent, readEntryMeta, readJsonBody, snapshotResponse } from "@/lib/laundry-store";
 import { hashToken, turnQuery } from "@/lib/waitlist";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     let waitlistRemoved = false;
     if (turn) {
       const removal = turnQuery({ entryId: turn.id, ownerHash: await hashToken(turn.token), locationId: machine.locationId, machineId: machine.id, newVersion: command.expectedVersion + 1, now });
-      const [started, removed] = await db.batch([start, db.prepare(removal.sql).bind(...removal.values)]);
+      // 맨 앞이 차례를 받아 빠질 때만 표식을 남겨요. 항목은 불변이라 미리 읽은 층·등록 시각을 믿어도 돼요(없으면 지우는 문장도 아무것도 지우지 않아요).
+      const meta = await readEntryMeta(turn.id);
+      const [started, removed] = await db.batch([start, db.prepare(removal.sql).bind(...removal.values), ...(meta ? [headChangeStatement(turn.id, meta, now)] : [])]);
       updated = (started.results[0] as StateRow | undefined) ?? null;
       waitlistRemoved = removed.results.length > 0;
     } else {

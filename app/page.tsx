@@ -38,7 +38,7 @@ function countdown(seconds: number) {
 }
 
 export default function Home() {
-  const { machines: allMachines, waitlist: allWaitlist, applySnapshot, loaded, currentTime, lastSync, connection, refreshing, pending, message, setMessage, refresh, updateMachine, actionsDisabled } = useLaundry();
+  const { machines: allMachines, waitlist: allWaitlist, waitlistLastChange, applySnapshot, loaded, currentTime, lastSync, connection, refreshing, pending, message, setMessage, refresh, updateMachine, actionsDisabled } = useLaundry();
   const [building, setBuilding] = useState<2 | 3>(3);
   const [wing, setWing] = useState<"women" | "men">("women");
   const [locationId, setLocationId] = useState<string | null>("h3-women-2");
@@ -61,7 +61,7 @@ export default function Home() {
     currentTime,
     onToast: setMessage,
   });
-  const { mine, join: joinWaitlist, leave: leaveWaitlist, pending: waitlistPending } = useWaitlist({ waitlist: allWaitlist, loaded, online: connection === "online", setMessage, applySnapshot, refresh });
+  const { mine, join: joinWaitlist, leave: leaveWaitlist, skip: skipWaitlist, pending: waitlistPending } = useWaitlist({ waitlist: allWaitlist, loaded, online: connection === "online", setMessage, applySnapshot, refresh });
   const { pending: reportPending, recentlyReported, report: reportMachine } = useReports({ online: connection === "online", currentTime, setMessage });
   const dialogRef = useRef<HTMLDialogElement>(null);
   const minutesRef = useRef<HTMLInputElement>(null);
@@ -237,7 +237,7 @@ export default function Home() {
           </VStack>
         </Grid>
 
-        <WaitlistPanel locationId={location.id} locationLabel={location.label} dryer={dryers[0]} entries={locationWaitlist} mine={mine} currentTime={currentTime} loaded={loaded} disabled={actionsDisabled || waitlistPending} dryerInService={dryers.length > 0 && dryers.every((dryer) => dryer.outOfService)} onJoin={joinWaitlist} onLeave={leaveWaitlist} />
+        <WaitlistPanel locationId={location.id} locationLabel={location.label} dryer={dryers[0]} entries={locationWaitlist} mine={mine} currentTime={currentTime} loaded={loaded} disabled={actionsDisabled || waitlistPending} dryerInService={dryers.length > 0 && dryers.every((dryer) => dryer.outOfService)} lastChangeAt={waitlistLastChange[location.id] ?? null} onJoin={joinWaitlist} onLeave={leaveWaitlist} onSkip={skipWaitlist} />
 
         </> : <VStack as="section" gap={3} hAlign="center" className="location-empty" aria-live="polite"><Info size={26} /><h2>시설 정보를 확인하고 있어요.</h2><p>이 구역의 층과 기기 구성이 확인되면<br />위치별 현황을 볼 수 있어요.</p></VStack>}
 
