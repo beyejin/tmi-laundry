@@ -33,13 +33,14 @@ export const MACHINES = LOCATIONS.flatMap((location) => EQUIPMENT.map((machine) 
 
 export type MachineId = (typeof MACHINES)[number]["id"];
 export type Command = { action: "start" | "adjust" | "clear"; expectedVersion: number; minutes?: number; waitlist?: { id: string; token: string } };
-export type StateRow = { id: string; ends_at: number | null; updated_at: number; version: number };
+export type StateRow = { id: string; ends_at: number | null; updated_at: number; version: number; out_of_service: number; service_note: string | null };
 
 export const STALE_AFTER_MS = 30 * 60_000;
-export type MachineStatus = "unknown" | "running" | "finished" | "stale";
+export type MachineStatus = "unknown" | "running" | "finished" | "stale" | "service";
 
-/** 종료 시각이 지난 뒤 30분까지는 finished(예상 종료), 그 뒤는 stale(확인 필요). 종료 시각이 아직 남았으면 running이에요. */
-export function machineStatus(endsAt: number | null, now: number): MachineStatus {
+/** 점검 중(service)이 가장 먼저예요. 종료 시각이 지난 뒤 30분까지는 finished(예상 종료), 그 뒤는 stale(확인 필요). 종료 시각이 아직 남았으면 running이에요. */
+export function machineStatus(endsAt: number | null, now: number, outOfService = false): MachineStatus {
+  if (outOfService) return "service";
   if (endsAt === null) return "unknown";
   if (endsAt > now) return "running";
   return now - endsAt < STALE_AFTER_MS ? "finished" : "stale";
@@ -96,10 +97,12 @@ export function stateSnapshot(rows: StateRow[], now: number) {
     serverTime: now,
     machines: MACHINES.map((machine) => {
       const row = rows.find((item) => item.id === machine.id);
-      return { ...machine, endsAt: row?.ends_at ?? null, updatedAt: row?.updated_at ?? null, version: row?.version ?? 0 };
+      return { ...machine, endsAt: row?.ends_at ?? null, updatedAt: row?.updated_at ?? null, version: row?.version ?? 0, outOfService: Boolean(row?.out_of_service), serviceNote: row?.service_note ?? null };
     }),
   };
 }
+
+export const SERVICE_MESSAGE = "점검 중인 기기예요. 관리자 안내를 확인해 주세요.";
 
 export function mutationQuery(id: MachineId, command: Command, now: number) {
   const machine = findMachine(id);
@@ -112,7 +115,7 @@ export function mutationQuery(id: MachineId, command: Command, now: number) {
     };
   }
   return {
-    sql: "UPDATE machine_state SET ends_at = ?2, updated_at = ?3, version = version + 1 WHERE id = ?1 AND version = ?4 AND (?5 <> 'start' OR ends_at IS NULL OR ends_at <= ?3) RETURNING *",
+    sql: "UPDATE machine_state SET ends_at = ?2, updated_at = ?3, version = version + 1 WHERE id = ?1 AND version = ?4 AND out_of_service = 0 AND (?5 <> 'start' OR ends_at IS NULL OR ends_at <= ?3) RETURNING *",
     values: [id, endsAt, now, command.expectedVersion, command.action],
   };
 }

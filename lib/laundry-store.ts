@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { eventInsert, type EventInput } from "./events";
+import { accuracyQuery, hourlyDistribution, hourlyQuery, isAdmin, periodStarts, reportCountsQuery, statsQuery, summarizeAccuracy, summarizeStats, DAY_MS, type StatPeriod, type StatRow } from "./admin";
+import { eventCleanupQuery, eventInsert, type EventInput } from "./events";
 import { stateSnapshot, type StateRow } from "./laundry";
 import { WAITLIST_TTL_MS, waitlistSnapshot, type WaitlistRow } from "./waitlist";
 
@@ -12,7 +13,7 @@ export async function readSnapshot() {
   const now = Date.now();
   const db = database();
   const [machines, waitlist] = await db.batch([
-    db.prepare("SELECT id, ends_at, updated_at, version FROM machine_state"),
+    db.prepare("SELECT id, ends_at, updated_at, version, out_of_service, service_note FROM machine_state"),
     db.prepare("SELECT id, location_id, nickname, created_at FROM waitlist_entry WHERE created_at > ?1").bind(now - WAITLIST_TTL_MS),
   ]);
   return { ...stateSnapshot(machines.results as StateRow[], now), waitlist: waitlistSnapshot(waitlist.results as WaitlistRow[], now) };
@@ -47,4 +48,40 @@ export async function logEvent(event: EventInput) {
   } catch (error) {
     console.error("Event log failed", error);
   }
+}
+
+/** 모든 /api/admin/* 의 첫 줄에서 불러요. 인증되지 않으면 401 응답을 돌려줘요. ADMIN_TOKEN이 없거나 짧으면 항상 401이에요. */
+export async function requireAdmin(request: Request): Promise<Response | null> {
+  return (await isAdmin(request, env.ADMIN_TOKEN)) ? null : errorResponse("관리자 인증이 필요해요.", 401);
+}
+
+/** 관리자 화면용 현황: 기기 상태 + 24시간 신고 수, 대기 명단(별명 포함, 토큰 제외), 기간별 통계, 시간대 분포, 예상 정확도. */
+export async function readOverview(options: { cleanup?: boolean } = {}) {
+  const db = database();
+  const now = Date.now();
+  if (options.cleanup) {
+    const cleanup = eventCleanupQuery(now);
+    await db.prepare(cleanup.sql).bind(...cleanup.values).run().catch((error) => console.error("Event cleanup failed", error));
+  }
+  const starts = periodStarts(now);
+  const queries = [statsQuery(starts.today), statsQuery(starts.week), statsQuery(starts.all), hourlyQuery(now - 7 * DAY_MS), reportCountsQuery(now - DAY_MS), accuracyQuery(now - 30 * DAY_MS)];
+  const [machines, waitlist, today, week, all, hourly, reports, accuracy] = await db.batch([
+    db.prepare("SELECT id, ends_at, updated_at, version, out_of_service, service_note FROM machine_state"),
+    db.prepare("SELECT id, location_id, nickname, created_at FROM waitlist_entry WHERE created_at > ?1").bind(now - WAITLIST_TTL_MS),
+    ...queries.map((query) => db.prepare(query.sql).bind(...query.values)),
+  ]);
+  const reportCounts = new Map((reports.results as { machine_id: string; n: number }[]).map((row) => [row.machine_id, row.n]));
+  const snapshot = stateSnapshot(machines.results as StateRow[], now);
+  const periods: Record<StatPeriod, StatRow[]> = { today: today.results as StatRow[], week: week.results as StatRow[], all: all.results as StatRow[] };
+  return {
+    serverTime: now,
+    machines: snapshot.machines.map((machine) => ({ ...machine, reports24h: reportCounts.get(machine.id) ?? 0 })),
+    waitlist: waitlistSnapshot(waitlist.results as WaitlistRow[], now),
+    stats: { today: summarizeStats(periods.today), week: summarizeStats(periods.week), all: summarizeStats(periods.all), hourly7d: hourlyDistribution(hourly.results as { hour: number; n: number }[]) },
+    accuracy: summarizeAccuracy(accuracy.results as { prev_remaining_sec: number; minutes: number }[]),
+  };
+}
+
+export async function adminResponse(options: { cleanup?: boolean } = {}) {
+  return Response.json(await readOverview(options), { headers: { "Cache-Control": "no-store" } });
 }

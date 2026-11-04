@@ -20,6 +20,7 @@ function availabilityRank(machine: SortableMachine) {
   if (machine.status === "unknown") return 0;
   if (machine.status === "stale") return 1;
   if (machine.status === "running") return 2;
+  if (machine.status === "service") return 4;
   return 3;
 }
 

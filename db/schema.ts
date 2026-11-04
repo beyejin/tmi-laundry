@@ -5,6 +5,8 @@ export const machineState = sqliteTable("machine_state", {
   endsAt: integer("ends_at"),
   updatedAt: integer("updated_at").notNull(),
   version: integer("version").notNull(),
+  outOfService: integer("out_of_service").notNull().default(0),
+  serviceNote: text("service_note"),
 });
 
 export const waitlistEntry = sqliteTable("waitlist_entry", {

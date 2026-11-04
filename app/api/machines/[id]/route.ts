@@ -1,4 +1,4 @@
-import { findMachine, mutationQuery, parseCommand, type StateRow } from "@/lib/laundry";
+import { SERVICE_MESSAGE, findMachine, mutationQuery, parseCommand, type StateRow } from "@/lib/laundry";
 import { database, errorResponse, logEvent, readJsonBody, snapshotResponse } from "@/lib/laundry-store";
 import { hashToken, turnQuery } from "@/lib/waitlist";
 
@@ -30,7 +30,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     } else {
       updated = await start.first<StateRow>();
     }
-    if (!updated) return errorResponse("다른 등록이 먼저 반영됐어요. 최신 현황을 확인하고 다시 시도해 주세요.", 409);
+    if (!updated) {
+      // 점검 중이라 거절됐는지 다시 읽어 구분해요. 읽기 실패는 기존 충돌 안내로 둬요.
+      const current = await db.prepare("SELECT out_of_service FROM machine_state WHERE id = ?1").bind(machine.id).first<{ out_of_service: number }>().catch(() => null);
+      if (current?.out_of_service === 1) return errorResponse(SERVICE_MESSAGE, 409);
+      return errorResponse("다른 등록이 먼저 반영됐어요. 최신 현황을 확인하고 다시 시도해 주세요.", 409);
+    }
     const prevRemainingSec = command.action === "adjust" && previous && previous.version === command.expectedVersion && previous.ends_at !== null ? Math.round((previous.ends_at - now) / 1000) : null;
     await logEvent({ kind: command.action, locationId: machine.locationId, machineId: machine.id, at: now, minutes: command.action === "start" ? machine.defaultMinutes : command.action === "adjust" ? command.minutes : null, prevRemainingSec });
     if (waitlistRemoved) await logEvent({ kind: "waitlist_turn", locationId: machine.locationId, machineId: machine.id, at: now });

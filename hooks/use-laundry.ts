@@ -8,12 +8,14 @@ export type Machine = (typeof MACHINES)[number] & {
   endsAt: number | null;
   updatedAt: number | null;
   version: number;
+  outOfService: boolean;
+  serviceNote: string | null;
 };
 export type Snapshot = { serverTime: number; machines: Machine[]; waitlist?: WaitlistEntry[] };
 type UpdateResult = { status: "saved" | "conflict" | "failed"; error?: string; waitlistRemoved?: boolean };
 
 const emptyWaitlist: WaitlistEntry[] = [];
-const emptyMachines: Machine[] = MACHINES.map((machine) => ({ ...machine, endsAt: null, updatedAt: null, version: 0 }));
+const emptyMachines: Machine[] = MACHINES.map((machine) => ({ ...machine, endsAt: null, updatedAt: null, version: 0, outOfService: false, serviceNote: null }));
 
 export function useLaundry() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
