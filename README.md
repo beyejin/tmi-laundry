@@ -47,7 +47,32 @@ npm run test:api
 
 단위 검증은 실제 SQLite에서 종료 시각, 중복 등록, 동시 수정, 입력값 검사를 확인합니다. API 검증은 로컬 서버의 3생활관 여자 2층 세탁기 2와 건조기 1, 3층 세탁기 2를 잠시 변경한 뒤 등록을 취소합니다. 건조기 시작과 함께 내 대기 항목이 정리되는지(실패한 시작은 명단 유지)는 5층 건조기로 확인합니다. 운영 서버를 수정하지 않도록 로컬 주소로 고정했습니다.
 
-이용 횟수는 `npx wrangler d1 execute DB --local --command "SELECT kind, COUNT(*) FROM event_log GROUP BY kind"`로 확인합니다(운영은 `--remote`). 배포 전 `npm run db:migrate:remote`로 0002를 적용해야 해요.
+이용 횟수는 `npx wrangler d1 execute DB --local --command "SELECT kind, COUNT(*) FROM event_log GROUP BY kind"`로 확인합니다(운영은 `--remote`). 배포 전 `npm run db:migrate:remote`로 0002와 0003을 적용해야 해요.
+
+## 관리자 화면
+
+`/admin`은 로그인 없이 쓰는 일반 화면과 별개로, 운영진이 고장 기기를 점검 중으로 바꾸고, 잘못된 등록을 초기화하고, 멈춘 대기 항목을 지우고, 이용 숫자를 내려받는 화면입니다. 메인 화면에는 링크가 없고 검색에 잡히지 않게(`noindex`) 해 두었습니다.
+
+- `ADMIN_TOKEN`이 없거나 24자 미만이면 `/api/admin/*` 전체가 항상 401이라 관리자 기능이 꺼집니다.
+- 토큰은 `/admin`에서 한 번 입력하면 그 탭의 `sessionStorage`에만 보관하고, 탭을 닫으면 사라집니다.
+- 점검 중으로 바꾸면 그 기기의 시작, 수정, 취소가 막히고 화면에 `점검 중`과 메모가 보입니다. 층의 건조기가 모두 점검 중이면 대기 등록도 받지 않습니다. 이용자의 `고장 신고`는 기록만 남고 점검 상태를 바꾸지 않으며, 기기당 10분에 3건까지 받습니다.
+- 초기화와 대기 항목 삭제는 브라우저 확인 창 없이 같은 버튼을 한 번 더 눌러야 실행됩니다.
+- 이용 기록 CSV(`/api/admin/events.csv?from=YYYY-MM-DD&to=YYYY-MM-DD`, 한국 시간, 최대 180일)에는 별명과 토큰이 들어 있지 않습니다.
+
+운영 토큰 설정(24자 이상 무작위 값을 팀 비밀 채널로만 공유):
+
+```sh
+npx wrangler secret put ADMIN_TOKEN
+```
+
+로컬에서는 저장소 루트의 `.dev.vars`(Git 제외)에 `ADMIN_TOKEN=24자_이상의_값`을 적습니다. `npm run preview`는 `dist/server/wrangler.json`을 쓰는데, wrangler는 이 설정 파일 옆의 `.dev.vars`만 읽습니다. 그래서 `preview` 스크립트가 서버를 띄우기 전에 `.dev.vars`를 `dist/server/`로 복사합니다(빌드할 때마다 `dist`가 새로 만들어지므로 매번 복사). 파일이 없으면 관리자 기능은 꺼진 채로 뜹니다. `test:api`에 `ADMIN_TOKEN` 환경변수를 같은 값으로 주면 관리자 API 시험까지 실행하고, 없으면 그 시험만 건너뛰고 401 확인은 실행합니다.
+
+```sh
+echo "ADMIN_TOKEN=local-admin-$(openssl rand -hex 16)" > .dev.vars
+npm run build && npm run preview
+# 다른 터미널에서
+ADMIN_TOKEN=$(sed 's/^ADMIN_TOKEN=//' .dev.vars) npm run test:api
+```
 
 ## Cloudflare 배포
 
@@ -67,6 +92,8 @@ npm run db:migrate:remote
 npm run deploy
 ```
 
+관리자 기능(0003)을 처음 배포할 때의 순서: `npx wrangler secret put ADMIN_TOKEN` → `npm run db:migrate:remote`(0003은 `ALTER TABLE ... ADD`만 있어 이전 코드도 그대로 동작) → `npm run deploy`. 토큰을 넣지 않고 배포하면 코드는 동작하지만 `/admin`은 401만 돌려줍니다. 배포 뒤에는 `/admin`에서 토큰 없이 401이 나오는지, `GET /api/machines`에 `outOfService` 필드가 있는지 확인합니다.
+
 인증 정보는 Git에 저장하지 않습니다. 이 저장소는 유료 플랜 변경이나 도메인 구매를 포함하지 않습니다.
 
 ## 코드 구조
@@ -78,8 +105,10 @@ npm run deploy
 - `app/api/machines/`: 현황 조회 및 변경 API. 건조기 시작 요청에 내 대기 항목(`waitlist`)을 함께 보내면 같은 D1 batch에서 명단을 정리해요.
 - `lib/events.ts`, `event_log` 테이블: 이용 기록(시작·수정·취소·대기 등록·대기 빠짐·차례 정리). 별명, 토큰, IP는 기록하지 않고 정리 쿼리(`eventCleanupQuery`, 120일 경과 행 삭제)는 만들어 두었고, 다음 PR(C)의 관리자 개요에서 실행해요. 그때까지는 기록이 쌓이기만 해요. 기록 실패는 요청을 막지 않아요.
 - `app/api/waitlist/`, `lib/waitlist.ts`, `hooks/use-waitlist.ts`, `app/waitlist-panel.tsx`: 건조기 대기자 명단
+- `lib/admin.ts`, `app/admin/`, `app/api/admin/`: 관리자 인증(`isAdmin`), 점검 전환·초기화·통계·CSV 순수 함수와 화면, API
+- `app/api/machines/[id]/report/`, `hooks/use-reports.ts`: 이용자 고장 신고
 - `app/qr/`: 기기별 QR 안내문과 인쇄
-- `drizzle/`: 데이터베이스 스키마(0002가 `event_log`). 테스트는 `tests/schema.mjs`가 이 마이그레이션을 그대로 적용해 메모리 DB를 만들어요.
+- `drizzle/`: 데이터베이스 스키마(0002가 `event_log`, 0003이 `machine_state.out_of_service`·`service_note`). 테스트는 `tests/schema.mjs`가 이 마이그레이션을 그대로 적용해 메모리 DB를 만들어요.
 - `.github/workflows/ci.yml`: PR과 main push마다 타입 검사, 테스트, 빌드, 로컬 API 검증을 실행(배포는 포함하지 않음)
 
 React와 Vinext, Cloudflare Workers 및 D1을 사용합니다. UI는 Astryx 컴포넌트와 토큰을 사용합니다.
