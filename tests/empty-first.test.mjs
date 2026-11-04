@@ -31,6 +31,17 @@ test('확인 필요(stale)는 미확인 다음, 사용 중 앞에 오고 빈 기
   assert.deepEqual(countAvailable(machines), { washer: 0, dryer: 1 });
 });
 
+test('점검 중(service)은 맨 뒤에 오고 빈 기기로 세지 않음', () => {
+  const machines = [
+    { id: 'svc', type: 'dryer', status: 'service', remainingSeconds: null },
+    { id: 'done', type: 'washer', status: 'finished', remainingSeconds: 0 },
+    { id: 'free', type: 'washer', status: 'unknown', remainingSeconds: null },
+  ];
+  assert.deepEqual(orderMachines(machines, 'available').map((machine) => machine.id), ['free', 'done', 'svc']);
+  assert.equal(isAvailableNow(machines[0]), false);
+  assert.deepEqual(countAvailable(machines), { washer: 1, dryer: 0 });
+});
+
 test('같은 상태에서는 기기 번호순을 유지', () => {
   const machines = [
     { id: 'a', status: 'unknown', remainingSeconds: null },

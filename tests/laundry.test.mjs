@@ -43,8 +43,8 @@ test('기존 ID와 확인되지 않은 구역 기기를 새 위치로 매핑하�
 
 test('기존 위치 미지정 DB 기록을 보존하면서 새 위치 현황에서 제외', () => {
   const s = setup();
-  s.db.prepare('INSERT INTO machine_state VALUES (?, ?, ?, ?)').run('washer-1', 999000, 1000, 7);
-  s.db.prepare('INSERT INTO machine_state VALUES (?, ?, ?, ?)').run('h3-men-2-washer-1', 888000, 1000, 4);
+  s.db.prepare('INSERT INTO machine_state (id, ends_at, updated_at, version) VALUES (?, ?, ?, ?)').run('washer-1', 999000, 1000, 7);
+  s.db.prepare('INSERT INTO machine_state (id, ends_at, updated_at, version) VALUES (?, ?, ?, ?)').run('h3-men-2-washer-1', 888000, 1000, 4);
   const before = s.db.prepare('SELECT * FROM machine_state ORDER BY id').all();
   const state = s.read(2000);
   assert.equal(state.machines.length, 12);
