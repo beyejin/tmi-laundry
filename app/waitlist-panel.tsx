@@ -6,7 +6,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Button } from "@astryxdesign/core/Button";
 import type { Machine } from "@/hooks/use-laundry";
-import { machineStatus } from "@/lib/laundry";
+import { formatSinceEnd, machineStatus } from "@/lib/laundry";
 import { NICKNAME_MAX, WAITLIST_LIMIT, estimateTurns, type WaitlistEntry } from "@/lib/waitlist";
 
 function timeLabel(time: number) {
@@ -20,7 +20,7 @@ export function DryerCard({ dryers, waiting, loaded, currentTime }: { dryers: Ma
       {dryers.map((dryer) => {
         const status = machineStatus(dryer.endsAt, currentTime);
         const seconds = dryer.endsAt === null ? null : Math.max(0, Math.ceil((dryer.endsAt - currentTime) / 1_000));
-        const text = !loaded ? "현황을 확인하고 있어요." : status === "unknown" ? "등록된 사용이 없어요" : status === "running" ? `${timeLabel(dryer.endsAt!)} 완료 예정 (약 ${Math.ceil(seconds! / 60)}분 남음)` : status === "stale" ? `확인 필요 · 끝난 지 ${Math.floor((currentTime - dryer.endsAt!) / 60_000)}분` : "예상 종료 · 수거 여부 미확인";
+        const text = !loaded ? "현황을 확인하고 있어요." : status === "unknown" ? "등록된 사용이 없어요" : status === "running" ? `${timeLabel(dryer.endsAt!)} 완료 예정 (약 ${Math.ceil(seconds! / 60)}분 남음)` : status === "stale" ? `확인 필요 · 끝난 지 ${formatSinceEnd(dryer.endsAt!, currentTime)}` : "예상 종료 · 수거 여부 미확인";
         return <p key={dryer.id} className="dryer-line"><strong>{dryer.name}</strong><span>{text}</span></p>;
       })}
     </VStack>

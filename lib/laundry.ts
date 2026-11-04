@@ -45,6 +45,14 @@ export function machineStatus(endsAt: number | null, now: number): MachineStatus
   return now - endsAt < STALE_AFTER_MS ? "finished" : "stale";
 }
 
+/** 종료 시각이 지난 뒤 경과 시간 표기: 60분 미만 N분, 24시간 미만 N시간, 그 이상은 하루 넘게. */
+export function formatSinceEnd(endsAt: number, now: number): string {
+  const minutes = Math.max(0, Math.floor((now - endsAt) / 60_000));
+  if (minutes < 60) return `${minutes}분`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}시간`;
+  return "하루 넘게";
+}
+
 export function findLocation(id: string) {
   return LOCATIONS.find((location) => location.id === id);
 }
