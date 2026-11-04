@@ -150,11 +150,11 @@ export function summarizeAccuracy(rows: { prev_remaining_sec: number; minutes: n
   return { count: diffs.length, medianSec, meanAbsSec };
 }
 
-/** CSV 셀: 쉼표, 따옴표, 줄바꿈이 있으면 따옴표로 감싸요. = + - @ 로 시작하면 수식으로 읽히지 않게 앞에 '를 붙여요. */
+/** CSV 셀: 쉼표, 따옴표, 줄바꿈이 있으면 따옴표로 감싸요. 문자열이 = + - @ 로 시작하면(숫자는 그대로 둬요) 수식으로 읽히지 않게 앞에 '를 붙여요. */
 export function csvCell(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "";
   let text = String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
@@ -179,5 +179,5 @@ export function parseCsvRange(from: string | null, to: string | null, now: numbe
 }
 
 export function csvQuery(fromAt: number, toAt: number) {
-  return { sql: "SELECT at, kind, location_id, machine_id, minutes, prev_remaining_sec FROM event_log WHERE at >= ?1 AND at < ?2 ORDER BY at, id LIMIT ?3", values: [fromAt, toAt, CSV_MAX_ROWS] };
+  return { sql: "SELECT at, kind, location_id, machine_id, minutes, prev_remaining_sec FROM event_log WHERE at >= ?1 AND at < ?2 ORDER BY at, id LIMIT ?3", values: [fromAt, toAt, CSV_MAX_ROWS + 1] };
 }

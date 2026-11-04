@@ -11,13 +11,13 @@ const STATUS_NAMES: Record<MachineStatus, string> = { unknown: "미확인", runn
 const KIND_LABELS: [string, string][] = [["start", "시작"], ["adjust", "시간 수정"], ["clear", "등록 취소"], ["waitlist_join", "대기 등록"], ["waitlist_leave", "대기 취소"], ["waitlist_turn", "차례 정리"], ["waitlist_skip", "건너뛰기"], ["report", "고장 신고"], ["service_on", "점검 시작"], ["service_off", "점검 해제"], ["admin_reset", "관리자 초기화"], ["admin_remove", "관리자 대기 삭제"]];
 
 type AdminMachine = Machine & { reports24h: number };
-type Overview = {
-  serverTime: number;
-  machines: AdminMachine[];
-  waitlist: WaitlistEntry[];
+type Stats = {
   stats: { today: PeriodStats; week: PeriodStats; all: PeriodStats; hourly7d: number[] };
   accuracy: { count: number; medianSec: number | null; meanAbsSec: number | null };
+  at: number;
 };
+type Overview = { serverTime: number; machines: AdminMachine[]; waitlist: WaitlistEntry[] };
+type OverviewResponse = Overview & Partial<Pick<Stats, "stats" | "accuracy">>;
 
 function timeLabel(time: number) {
   return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(time);
@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [full, setFull] = useState<Stats | null>(null);
   const [offset, setOffset] = useState(0);
   const [now, setNow] = useState(0);
   const [error, setError] = useState("");
@@ -50,6 +51,7 @@ export default function AdminPage() {
   const [to, setTo] = useState("");
   const armTimer = useRef<number | null>(null);
   const busyRef = useRef(false);
+  const dirtyRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -62,9 +64,11 @@ export default function AdminPage() {
   }, []);
 
   const logout = useCallback((message = "") => {
+    dirtyRef.current.clear();
     try { window.sessionStorage.removeItem(TOKEN_KEY); } catch { /* 저장소가 막혀도 로그아웃은 돼요 */ }
     setToken("");
     setOverview(null);
+    setFull(null);
     setError(message);
   }, []);
 
@@ -74,24 +78,27 @@ export default function AdminPage() {
     return response;
   }, [token, logout]);
 
-  const apply = useCallback((data: Overview) => {
-    setOverview(data);
+  const apply = useCallback((data: OverviewResponse) => {
+    setOverview({ serverTime: data.serverTime, machines: data.machines, waitlist: data.waitlist });
+    if (data.stats && data.accuracy) setFull({ stats: data.stats, accuracy: data.accuracy, at: data.serverTime });
     setOffset(data.serverTime - Date.now());
     setNow(Date.now());
+    // 입력 중(dirty)이 아닌 기기의 메모 칸은 서버 값(점검 중이 아니면 빈 칸)으로 맞춰요.
     setNotes((current) => {
       const next = { ...current };
-      for (const machine of data.machines) if (!(machine.id in next)) next[machine.id] = machine.serviceNote ?? "";
+      for (const machine of data.machines) if (!dirtyRef.current.has(machine.id)) next[machine.id] = machine.outOfService ? machine.serviceNote ?? "" : "";
       return next;
     });
   }, []);
 
-  const refresh = useCallback(async () => {
+  /** 통계를 포함한 전체 현황은 처음과 "통계 새로고침"에서만, 30초 폴링은 가벼운 응답(stats=0)만 받아요. */
+  const refresh = useCallback(async (withStats = false) => {
     if (!token || busyRef.current) return;
     try {
-      const response = await call("/api/admin/overview");
+      const response = await call(`/api/admin/overview?stats=${withStats ? 1 : 0}`);
       if (!response.ok) { setError("현황을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."); return; }
       setError("");
-      apply(await response.json() as Overview);
+      apply(await response.json() as OverviewResponse);
     } catch (caught) {
       if ((caught as Error).message !== "unauthorized") setError("연결을 확인하지 못했어요.");
     }
@@ -99,10 +106,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!token) return;
-    const first = window.setTimeout(() => void refresh(), 0);
-    const poll = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 30_000);
+    const first = window.setTimeout(() => void refresh(true), 0);
+    const poll = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(false); }, 30_000);
     const tick = window.setInterval(() => setNow(Date.now()), 1_000);
-    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh(false); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { window.clearTimeout(first); window.clearInterval(poll); window.clearInterval(tick); document.removeEventListener("visibilitychange", onVisible); };
   }, [token, refresh]);
@@ -124,9 +131,10 @@ export default function AdminPage() {
     setNotice("");
     try {
       const response = await call(path, { method: "POST", body: JSON.stringify(body) });
-      const data = await response.json().catch(() => ({})) as Overview & { error?: string };
+      const data = await response.json().catch(() => ({})) as OverviewResponse & { error?: string };
       if (!response.ok) { setError(data.error ?? "처리하지 못했어요."); return; }
       setError("");
+      if (key.startsWith("service:")) dirtyRef.current.delete(key.slice("service:".length));
       apply(data);
       setNotice(success);
     } catch (caught) {
@@ -155,6 +163,7 @@ export default function AdminPage() {
     try {
       const response = await call(`/api/admin/events.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
       if (!response.ok) { setError(((await response.json().catch(() => ({}))) as { error?: string }).error ?? "내려받지 못했어요."); return; }
+      const truncated = response.headers.get("X-Truncated") === "1";
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement("a");
       link.href = url;
@@ -164,7 +173,7 @@ export default function AdminPage() {
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setError("");
-      setNotice("CSV를 내려받았어요.");
+      setNotice(truncated ? "최대 50,000행까지만 내려받았어요. 기간을 나눠 다시 받아 주세요." : "CSV를 내려받았어요.");
     } catch (caught) {
       if ((caught as Error).message !== "unauthorized") setError("연결을 확인하지 못했어요.");
     } finally { busyRef.current = false; setBusy(null); }
@@ -200,7 +209,7 @@ export default function AdminPage() {
             <div className="admin-machine-head"><strong>{machine.name}</strong><span className="admin-badge">{STATUS_NAMES[status]}</span></div>
             <span className="admin-meta">{status === "running" ? `${Math.ceil(seconds! / 60)}분 남음 (${timeLabel(machine.endsAt!)} 종료 예상)` : status === "finished" || status === "stale" ? `끝난 지 ${formatSinceEnd(machine.endsAt!, current)}` : status === "service" ? `메모: ${machine.serviceNote ?? "없음"}` : "등록 없음"}</span>
             <span className={`admin-meta ${machine.reports24h ? "has-report" : ""}`}>최근 24시간 고장 신고 {machine.reports24h}건</span>
-            <div className="admin-field"><label htmlFor={`note-${machine.id}`}>점검 메모 (40자까지)</label><input id={`note-${machine.id}`} maxLength={40} value={note} onChange={(event) => setNotes((currentNotes) => ({ ...currentNotes, [machine.id]: event.target.value }))} placeholder="예: 배수 불량, 내일 수리" /></div>
+            <div className="admin-field"><label htmlFor={`note-${machine.id}`}>점검 메모 (40자까지)</label><input id={`note-${machine.id}`} maxLength={40} value={note} onChange={(event) => { dirtyRef.current.add(machine.id); setNotes((currentNotes) => ({ ...currentNotes, [machine.id]: event.target.value })); }} placeholder="예: 배수 불량, 내일 수리" /></div>
             <div className="admin-row">
               <button type="button" className={`admin-btn ${machine.outOfService ? "" : "is-danger"}`} disabled={busy !== null} onClick={() => void act(`service:${machine.id}`, `/api/admin/machines/${machine.id}`, { action: "service", on: !machine.outOfService, note }, machine.outOfService ? `${machine.name} 점검을 풀었어요.` : `${machine.name}을 점검 중으로 바꿨어요.`)}>{machine.outOfService ? "점검 해제" : "점검 시작"}</button>
               {machine.outOfService && <button type="button" className="admin-btn" disabled={busy !== null} onClick={() => void act(`service:${machine.id}`, `/api/admin/machines/${machine.id}`, { action: "service", on: true, note }, "점검 메모를 저장했어요.")}>메모 저장</button>}
@@ -226,25 +235,25 @@ export default function AdminPage() {
     </section>
 
     <section className="admin-card" aria-labelledby="admin-stats">
-      <h2 id="admin-stats">통계</h2>
-      {!overview ? null : <>
+      <div className="admin-top"><h2 id="admin-stats">통계</h2><div className="admin-row">{full && <span className="admin-note">통계 기준 {timeLabel(full.at)}</span>}<button type="button" className="admin-btn" disabled={busy !== null} onClick={() => void refresh(true)}>통계 새로고침</button></div></div>
+      {!full ? <p className="admin-note">불러오는 중이에요.</p> : <>
         <div className="admin-scroll"><table className="admin-table"><thead><tr><th scope="col">종류</th><th scope="col">오늘</th><th scope="col">7일</th><th scope="col">전체</th></tr></thead><tbody>
-          {KIND_LABELS.map(([kind, label]) => <tr key={kind}><th scope="row">{label}</th>{(["today", "week", "all"] as const).map((period) => <td key={period}>{overview.stats[period].counts[kind] ?? 0}</td>)}</tr>)}
-          <tr><th scope="row">시작 중 세탁기</th>{(["today", "week", "all"] as const).map((period) => <td key={period}>{overview.stats[period].washerStarts}</td>)}</tr>
-          <tr><th scope="row">시작 중 건조기</th>{(["today", "week", "all"] as const).map((period) => <td key={period}>{overview.stats[period].dryerStarts}</td>)}</tr>
+          {KIND_LABELS.map(([kind, label]) => <tr key={kind}><th scope="row">{label}</th>{(["today", "week", "all"] as const).map((period) => <td key={period}>{full.stats[period].counts[kind] ?? 0}</td>)}</tr>)}
+          <tr><th scope="row">세탁기 시작</th>{(["today", "week", "all"] as const).map((period) => <td key={period}>{full.stats[period].washerStarts}</td>)}</tr>
+          <tr><th scope="row">건조기 시작</th>{(["today", "week", "all"] as const).map((period) => <td key={period}>{full.stats[period].dryerStarts}</td>)}</tr>
         </tbody></table></div>
         <p className="admin-note">오늘은 한국 시간 자정부터예요. 전체는 보관 기간(120일) 안의 기록이에요.</p>
         <h3 style={{ marginTop: "var(--spacing-4)" }}>최근 7일 시작 시간대</h3>
-        <div className="admin-hours" role="list" aria-label="시간대별 시작 횟수">{overview.stats.hourly7d.map((count, hour) => <div key={hour} style={{ display: "contents" }} role="listitem"><span>{String(hour).padStart(2, "0")}시</span><span className="bar" style={{ width: `${Math.max(count ? 2 : 0, (count / Math.max(1, ...overview.stats.hourly7d)) * 100)}%` }} /><span>{count}</span></div>)}</div>
+        <div className="admin-hours" role="list" aria-label="시간대별 시작 횟수">{full.stats.hourly7d.map((count, hour) => <div key={hour} style={{ display: "contents" }} role="listitem"><span>{String(hour).padStart(2, "0")}시</span><span className="bar" style={{ width: `${Math.max(count ? 2 : 0, (count / Math.max(1, ...full.stats.hourly7d)) * 100)}%` }} /><span>{count}</span></div>)}</div>
       </>}
     </section>
 
     <section className="admin-card" aria-labelledby="admin-accuracy">
       <h2 id="admin-accuracy">예상 정확도 (최근 30일)</h2>
-      {!overview ? null : overview.accuracy.count === 0 ? <p className="admin-note">시간을 수정한 기록이 아직 없어요.</p> : <div className="admin-scroll"><table className="admin-table"><tbody>
-        <tr><th scope="row">수정 건수</th><td>{overview.accuracy.count}건</td></tr>
-        <tr><th scope="row">중앙값 차이</th><td>{minutesText(overview.accuracy.medianSec)}</td></tr>
-        <tr><th scope="row">평균 절댓값 차이</th><td>{minutesText(overview.accuracy.meanAbsSec)}</td></tr>
+      {!full ? null : full.accuracy.count === 0 ? <p className="admin-note">시간을 수정한 기록이 아직 없어요.</p> : <div className="admin-scroll"><table className="admin-table"><tbody>
+        <tr><th scope="row">수정 건수</th><td>{full.accuracy.count}건</td></tr>
+        <tr><th scope="row">중앙값 차이</th><td>{minutesText(full.accuracy.medianSec)}</td></tr>
+        <tr><th scope="row">평균 절댓값 차이</th><td>{minutesText(full.accuracy.meanAbsSec)}</td></tr>
       </tbody></table></div>}
       <p className="admin-note">차이는 수정 직전 남은 시간에서 새로 입력한 남은 시간을 뺀 값이에요. 양수면 처음 등록한 시간이 실제보다 길었다는 뜻이에요.</p>
     </section>

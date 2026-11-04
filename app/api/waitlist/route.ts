@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       if (!inserted.results.length) {
         // 건조기가 모두 점검 중이라 거절됐는지 다시 읽어 구분해요.
         const service = dryerIds.length ? await db.prepare(dryersInServiceQuery(dryerIds).sql).bind(...dryerIds).first<{ n: number }>().catch(() => null) : null;
-        if (service && service.n >= dryerIds.length) return errorResponse(DRYER_SERVICE_MESSAGE, 409);
+        if (service && service.n >= dryerIds.length) return errorResponse(DRYER_SERVICE_MESSAGE, 409, { reason: "service" });
         return errorResponse("대기 인원이 가득 찼거나 같은 이름이 이미 있어요.", 409);
       }
       await logEvent({ kind: "waitlist_join", locationId: command.locationId, at: now });

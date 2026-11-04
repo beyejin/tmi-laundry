@@ -19,7 +19,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const query = command.action === "service" ? serviceQuery(machine.id, command.on, command.note, now) : resetQuery(machine.id, now);
     await database().prepare(query.sql).bind(...query.values).run();
     await logEvent({ kind: command.action === "reset" ? "admin_reset" : command.on ? "service_on" : "service_off", locationId: machine.locationId, machineId: machine.id, at: now });
-    return await adminResponse();
+    return await adminResponse({ stats: false });
   } catch (error) {
     console.error("Admin machine update failed", error);
     return errorResponse("처리 결과를 확인하지 못했어요. 현황을 새로고침해 주세요.", 503);

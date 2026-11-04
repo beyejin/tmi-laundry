@@ -103,7 +103,7 @@ npm run deploy
 - `lib/laundry.ts`: 기기 정의, 입력 검증, 동시에 등록할 때 충돌을 막는 SQL, 상태 판정(`machineStatus`: 미확인/사용 중/예상 종료/확인 필요)
 - `lib/laundry-store.ts`: D1 접근, API 응답, POST 공통 가드(`readJsonBody`), 이용 기록(`logEvent`)
 - `app/api/machines/`: 현황 조회 및 변경 API. 건조기 시작 요청에 내 대기 항목(`waitlist`)을 함께 보내면 같은 D1 batch에서 명단을 정리해요.
-- `lib/events.ts`, `event_log` 테이블: 이용 기록(시작·수정·취소·대기 등록·대기 빠짐·차례 정리). 별명, 토큰, IP는 기록하지 않고 정리 쿼리(`eventCleanupQuery`, 120일 경과 행 삭제)는 만들어 두었고, 다음 PR(C)의 관리자 개요에서 실행해요. 그때까지는 기록이 쌓이기만 해요. 기록 실패는 요청을 막지 않아요.
+- `lib/events.ts`, `event_log` 테이블: 이용 기록(시작·수정·취소·대기 등록·대기 빠짐·차례 정리). 별명, 토큰, IP는 기록하지 않고 정리 쿼리(`eventCleanupQuery`, 120일 경과 행 삭제)는 만들어 두었고, 관리자가 전체 통계를 불러올 때(`/api/admin/overview`, `stats=0`인 30초 폴링에서는 실행하지 않아요) 함께 실행해요. 시범 운영 기간이 120일보다 짧아 이것으로 충분해요. 기록 실패는 요청을 막지 않아요.
 - `app/api/waitlist/`, `lib/waitlist.ts`, `hooks/use-waitlist.ts`, `app/waitlist-panel.tsx`: 건조기 대기자 명단
 - `lib/admin.ts`, `app/admin/`, `app/api/admin/`: 관리자 인증(`isAdmin`), 점검 전환·초기화·통계·CSV 순수 함수와 화면, API
 - `app/api/machines/[id]/report/`, `hooks/use-reports.ts`: 이용자 고장 신고

@@ -273,6 +273,10 @@ test('로컬 공유 API 통합 검증', async (t) => {
         assert.equal(data.machines.length, MACHINES.length);
         assert.ok(['today', 'week', 'all'].every((key) => data.stats[key] && typeof data.stats[key].counts === 'object'));
         assert.equal(data.stats.hourly7d.length, 24);
+        const light = await (await admin('/api/admin/overview?stats=0')).json();
+        assert.equal(light.machines.length, MACHINES.length);
+        assert.ok(Array.isArray(light.waitlist));
+        assert.equal('stats' in light || 'accuracy' in light, false, 'stats=0에는 통계가 없어요');
         assert.ok(data.machines.find((item) => item.id === REPORT_ID).reports24h >= 3);
         assert.equal((await adminPost(`/api/admin/machines/${id}`, { action: 'service', on: true, note: 'x'.repeat(41) })).status, 400);
         const on = await adminPost(`/api/admin/machines/${id}`, { action: 'service', on: true, note: '  시험 점검  ' });
@@ -283,6 +287,7 @@ test('로컬 공유 API 통합 검증', async (t) => {
         const blocked = await post(id, { action: 'start', expectedVersion: machine(snapshot, id).version });
         assert.equal(blocked.status, 409);
         assert.match(blocked.body.error, /점검 중인 기기예요/);
+        assert.equal(blocked.body.reason, 'service');
         const staleVersion = await post(id, { action: 'start', expectedVersion: 0 });
         assert.equal(staleVersion.status, 409);
         const joined = await wait({ action: 'join', locationId: 'h3-women-5', nickname: `점검${Date.now() % 100000}` });

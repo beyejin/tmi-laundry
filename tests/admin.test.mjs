@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { createDb } from './schema.mjs';
 import { MACHINES, SERVICE_MESSAGE, machineStatus, mutationQuery, stateSnapshot } from '../lib/laundry.ts';
 import { joinQuery, dryersInServiceQuery } from '../lib/waitlist.ts';
-import { eventInsert, reportQuery, EVENT_KINDS } from '../lib/events.ts';
+import { eventInsert, reportQuery, EVENT_KINDS, REPORT_LIMIT, REPORT_WINDOW_MS } from '../lib/events.ts';
 import {
-  CSV_HEADER, accuracyQuery, adminRemoveQuery, csvCell, csvLine, csvQuery, hourlyDistribution, hourlyQuery, isAdmin, kstDateString, kstDayStart, kstDateTimeString,
+  CSV_HEADER, CSV_MAX_ROWS, accuracyQuery, adminRemoveQuery, csvCell, csvLine, csvQuery, hourlyDistribution, hourlyQuery, isAdmin, kstDateString, kstDayStart, kstDateTimeString,
   normalizeServiceNote, parseAdminMachineCommand, parseAdminWaitlistCommand, parseCsvRange, periodStarts, reportCountsQuery, resetQuery, safeEqualBytes, serviceQuery,
   statsQuery, summarizeAccuracy, summarizeStats, DAY_MS,
 } from '../lib/admin.ts';
@@ -207,7 +207,9 @@ test('CSV 셀 이스케이프: 쉼표, 따옴표, 개행, 수식 시작 문자',
   assert.equal(csvCell(null), '');
   assert.equal(csvCell(undefined), '');
   assert.equal(csvCell(5), '5');
-  assert.equal(csvCell(-5), "'-5");
+  assert.equal(csvCell(-5), '-5');
+  assert.equal(csvCell(-120), '-120');
+  assert.equal(csvCell('-1+1'), "'-1+1");
   assert.equal(csvCell('plain'), 'plain');
   assert.equal(csvCell('a,b'), '"a,b"');
   assert.equal(csvCell('say "hi"'), '"say ""hi"""');
@@ -215,7 +217,7 @@ test('CSV 셀 이스케이프: 쉼표, 따옴표, 개행, 수식 시작 문자',
   for (const lead of ['=1+1', '+1', '-1', '@SUM(A1)']) assert.equal(csvCell(lead), `'${lead}`);
   assert.equal(csvCell('=a,b'), '"\'=a,b"');
   assert.equal(CSV_HEADER, 'at_kst,kind,location_id,machine_id,minutes,prev_remaining_sec');
-  assert.equal(csvLine({ at: Date.parse('2026-11-04T07:08:09+09:00'), kind: 'adjust', location_id: LOC, machine_id: WASHER, minutes: 10, prev_remaining_sec: -30 }), `2026-11-04 07:08:09,adjust,${LOC},${WASHER},10,'-30`);
+  assert.equal(csvLine({ at: Date.parse('2026-11-04T07:08:09+09:00'), kind: 'adjust', location_id: LOC, machine_id: WASHER, minutes: 10, prev_remaining_sec: -30 }), `2026-11-04 07:08:09,adjust,${LOC},${WASHER},10,-30`);
   assert.equal(csvLine({ at: Date.parse('2026-11-04T07:08:09+09:00'), kind: 'waitlist_join', location_id: LOC, machine_id: null, minutes: null, prev_remaining_sec: null }), `2026-11-04 07:08:09,waitlist_join,${LOC},,,`);
 });
 
@@ -236,8 +238,15 @@ test('CSV 범위: 기본 30일, to 포함, 최대 180일, 형식 오류', () => 
   run(db, eventInsert({ at: one.toAt - 1, kind: 'clear', locationId: LOC, machineId: WASHER }));
   run(db, eventInsert({ at: one.toAt, kind: 'start', locationId: LOC, machineId: WASHER }));
   assert.equal(all(db, csvQuery(one.fromAt, one.toAt)).length, 2);
+  assert.equal(csvQuery(one.fromAt, one.toAt).values[2], CSV_MAX_ROWS + 1, '초과 여부를 알려고 한 줄 더 읽어요');
 });
 
 test('점검 안내 문구 상수', () => {
   assert.match(SERVICE_MESSAGE, /점검 중인 기기예요/);
+});
+
+test('reportQuery: 한도와 시간 창을 파라미터로 묶음', () => {
+  const query = reportQuery({ id: WASHER, locationId: LOC }, NOW);
+  assert.equal(query.sql.includes('600000'), false);
+  assert.deepEqual(query.values.slice(3), [REPORT_WINDOW_MS, REPORT_LIMIT]);
 });

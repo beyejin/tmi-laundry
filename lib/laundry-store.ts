@@ -23,8 +23,8 @@ export async function snapshotResponse(extra: Record<string, unknown> = {}) {
   return Response.json({ ...(await readSnapshot()), ...extra }, { headers: { "Cache-Control": "no-store" } });
 }
 
-export function errorResponse(message: string, status: number) {
-  return Response.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
+export function errorResponse(message: string, status: number, extra: Record<string, unknown> = {}) {
+  return Response.json({ error: message, ...extra }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
 /** POST 공통 가드: 415 content-type, 403 cross-site, 413 1024바이트, 400 JSON 파싱. */
@@ -55,33 +55,41 @@ export async function requireAdmin(request: Request): Promise<Response | null> {
   return (await isAdmin(request, env.ADMIN_TOKEN)) ? null : errorResponse("관리자 인증이 필요해요.", 401);
 }
 
-/** 관리자 화면용 현황: 기기 상태 + 24시간 신고 수, 대기 명단(별명 포함, 토큰 제외), 기간별 통계, 시간대 분포, 예상 정확도. */
-export async function readOverview(options: { cleanup?: boolean } = {}) {
+/** 관리자 화면용 현황: 기기 상태 + 24시간 신고 수, 대기 명단(별명 포함, 토큰 제외). stats가 true면 기간별 통계, 시간대 분포, 예상 정확도를 더해요. 가벼운 폴링은 stats: false예요. */
+export async function readOverview(options: { cleanup?: boolean; stats?: boolean } = {}) {
   const db = database();
   const now = Date.now();
-  if (options.cleanup) {
+  const withStats = options.stats !== false;
+  if (options.cleanup && withStats) {
     const cleanup = eventCleanupQuery(now);
     await db.prepare(cleanup.sql).bind(...cleanup.values).run().catch((error) => console.error("Event cleanup failed", error));
   }
   const starts = periodStarts(now);
-  const queries = [statsQuery(starts.today), statsQuery(starts.week), statsQuery(starts.all), hourlyQuery(now - 7 * DAY_MS), reportCountsQuery(now - DAY_MS), accuracyQuery(now - 30 * DAY_MS)];
-  const [machines, waitlist, today, week, all, hourly, reports, accuracy] = await db.batch([
+  const reportQ = reportCountsQuery(now - DAY_MS);
+  const statQueries = withStats ? [statsQuery(starts.today), statsQuery(starts.week), statsQuery(starts.all), hourlyQuery(now - 7 * DAY_MS), accuracyQuery(now - 30 * DAY_MS)] : [];
+  const [machines, waitlist, reports, ...rest] = await db.batch([
     db.prepare("SELECT id, ends_at, updated_at, version, out_of_service, service_note FROM machine_state"),
     db.prepare("SELECT id, location_id, nickname, created_at FROM waitlist_entry WHERE created_at > ?1").bind(now - WAITLIST_TTL_MS),
-    ...queries.map((query) => db.prepare(query.sql).bind(...query.values)),
+    db.prepare(reportQ.sql).bind(...reportQ.values),
+    ...statQueries.map((query) => db.prepare(query.sql).bind(...query.values)),
   ]);
   const reportCounts = new Map((reports.results as { machine_id: string; n: number }[]).map((row) => [row.machine_id, row.n]));
   const snapshot = stateSnapshot(machines.results as StateRow[], now);
-  const periods: Record<StatPeriod, StatRow[]> = { today: today.results as StatRow[], week: week.results as StatRow[], all: all.results as StatRow[] };
-  return {
+  const base = {
     serverTime: now,
     machines: snapshot.machines.map((machine) => ({ ...machine, reports24h: reportCounts.get(machine.id) ?? 0 })),
     waitlist: waitlistSnapshot(waitlist.results as WaitlistRow[], now),
+  };
+  if (!withStats) return base;
+  const [today, week, all, hourly, accuracy] = rest;
+  const periods: Record<StatPeriod, StatRow[]> = { today: today.results as StatRow[], week: week.results as StatRow[], all: all.results as StatRow[] };
+  return {
+    ...base,
     stats: { today: summarizeStats(periods.today), week: summarizeStats(periods.week), all: summarizeStats(periods.all), hourly7d: hourlyDistribution(hourly.results as { hour: number; n: number }[]) },
     accuracy: summarizeAccuracy(accuracy.results as { prev_remaining_sec: number; minutes: number }[]),
   };
 }
 
-export async function adminResponse(options: { cleanup?: boolean } = {}) {
+export async function adminResponse(options: { cleanup?: boolean; stats?: boolean } = {}) {
   return Response.json(await readOverview(options), { headers: { "Cache-Control": "no-store" } });
 }

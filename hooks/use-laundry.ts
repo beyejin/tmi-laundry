@@ -98,11 +98,11 @@ export function useLaundry() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, minutes, expectedVersion: machine.version, waitlist }),
       });
-      const data = await response.json() as Snapshot & { error?: string; waitlistRemoved?: boolean };
+      const data = await response.json() as Snapshot & { error?: string; reason?: string; waitlistRemoved?: boolean };
       if (!mounted.current) return { status: "failed" };
       if (!response.ok) {
         if (response.status === 409) {
-          const error = "다른 분이 정보를 변경했어요. 최신 현황을 확인한 뒤 다시 시도해 주세요.";
+          const error = data.reason === "service" && data.error ? data.error : "다른 분이 정보를 변경했어요. 최신 현황을 확인한 뒤 다시 시도해 주세요.";
           setMessage(error);
           await refresh(true);
           return { status: "conflict", error };
