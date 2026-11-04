@@ -161,7 +161,7 @@ export default function Home() {
   const counts = machines.reduce((total, machine) => { total[machineStatus(machine, currentTime)] += 1; return total; }, { running: 0, finished: 0, unknown: 0 });
   const sortableMachines = machines.map((machine) => ({ ...machine, status: machineStatus(machine, currentTime), remainingSeconds: remainingSeconds(machine, currentTime) }));
   const orderedMachines = proto && loaded ? orderMachines(sortableMachines, sortMode) : machines;
-  const visibleMachines = orderedMachines.filter((machine) => machineType === "all" || machine.type === machineType);
+  const visibleMachines = orderedMachines.filter((machine) => machines.length <= 3 || machineType === "all" || machine.type === machineType);
   const availableCounts = countAvailable(sortableMachines);
   const selectedAvailable = Boolean(proto && loaded && selectedStatus === "unknown");
 
