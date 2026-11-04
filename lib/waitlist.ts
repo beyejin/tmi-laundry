@@ -6,7 +6,8 @@ export const NICKNAME_MAX = 12;
 
 export type WaitlistCommand =
   | { action: "join"; locationId: string; nickname: string }
-  | { action: "leave"; id: string; token: string };
+  | { action: "leave"; id: string; token: string }
+  | { action: "skip"; id: string };
 export type WaitlistRow = { id: string; location_id: string; nickname: string; created_at: number };
 export type WaitlistEntry = { id: string; locationId: string; nickname: string; createdAt: number };
 
@@ -29,6 +30,10 @@ export function parseWaitlistCommand(value: unknown): WaitlistCommand | null {
   if (input.action === "leave") {
     if (!isWaitlistId(input.id) || !isWaitlistToken(input.token)) return null;
     return { action: "leave", id: input.id, token: input.token };
+  }
+  if (input.action === "skip") {
+    if (!isWaitlistId(input.id)) return null;
+    return { action: "skip", id: input.id };
   }
   return null;
 }
@@ -71,6 +76,57 @@ export function turnQuery(turn: { entryId: string; ownerHash: string; locationId
   return {
     sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND owner_hash = ?2 AND location_id = ?3 AND EXISTS (SELECT 1 FROM machine_state WHERE id = ?4 AND version = ?5 AND updated_at = ?6) AND changes() > 0 RETURNING id",
     values: [turn.entryId, turn.ownerHash, turn.locationId, turn.machineId, turn.newVersion, turn.now],
+  };
+}
+
+export const SKIP_AFTER_MS = 10 * 60_000;
+export const SKIP_BUSY_MESSAGE = "건조기가 아직 사용 중이에요.";
+export const SKIP_SERVICE_MESSAGE = "건조기 점검 중이에요.";
+export const SKIP_CHANGED_MESSAGE = "그 사이 차례가 바뀌었어요.";
+export const SKIP_EVENT_KINDS = ["waitlist_leave", "waitlist_turn", "waitlist_skip", "admin_remove"] as const;
+
+type DryerFree = { endsAt: number | null; updatedAt: number | null; outOfService: boolean };
+
+/** 건조기가 비어 있게 된 시각이에요. 사용 중이거나 점검 중이면 null이에요. 행이 없으면(endsAt, updatedAt 모두 null) 처음부터 비어 있던 것으로 봐요. */
+export function dryerFreeSince(dryer: DryerFree, now: number): number | null {
+  if (dryer.outOfService) return null;
+  if (dryer.endsAt !== null) return dryer.endsAt > now ? null : dryer.endsAt;
+  return dryer.updatedAt ?? 0;
+}
+
+/** 맨 앞 사람의 차례가 실제로 시작된 시각이에요: 등록 시각, 건조기가 빈 시각, 마지막 명단 변동 중 가장 늦은 값. */
+export function turnSince(head: { createdAt: number }, freeSince: number, lastChangeAt: number | null): number {
+  return Math.max(head.createdAt, freeSince, lastChangeAt ?? 0);
+}
+
+/**
+ * 맨 앞 대기자를 건너뛸 수 있는지 서버와 화면이 같은 규칙으로 판정해요. 건조기는 층의 첫 번째 건조기예요(estimateTurns와 같은 기준).
+ * 차례가 된 지 SKIP_AFTER_MS(10분)가 지나야 건너뛸 수 있고, 그 전에는 남은 시간(waitMs)을 돌려줘요.
+ */
+export function canSkip(input: { head: { createdAt: number }; dryer: DryerFree; lastChangeAt: number | null; now: number }): { ok: true } | { ok: false; reason: "busy" | "service" | "wait"; waitMs?: number } {
+  if (input.dryer.outOfService) return { ok: false, reason: "service" };
+  const free = dryerFreeSince(input.dryer, input.now);
+  if (free === null) return { ok: false, reason: "busy" };
+  const waitMs = turnSince(input.head, free, input.lastChangeAt) + SKIP_AFTER_MS - input.now;
+  return waitMs > 0 ? { ok: false, reason: "wait", waitMs } : { ok: true };
+}
+
+/** 층의 맨 앞 대기자예요. waitlistSnapshot과 같은 정렬(created_at, id)과 만료 조건을 써요. */
+export function headQuery(locationId: string, now: number) {
+  return { sql: "SELECT id, location_id, nickname, created_at FROM waitlist_entry WHERE location_id = ?1 AND created_at > ?2 ORDER BY created_at, id LIMIT 1", values: [locationId, now - WAITLIST_TTL_MS] };
+}
+
+/** 층별 마지막 명단 변동 시각이에요(이용 기록 기반 best-effort). */
+export function lastChangeQuery(now: number) {
+  const kinds = SKIP_EVENT_KINDS.map((kind) => `'${kind}'`).join(", ");
+  return { sql: `SELECT location_id, MAX(at) AS last_at FROM event_log WHERE kind IN (${kinds}) AND at > ?1 GROUP BY location_id`, values: [now - WAITLIST_TTL_MS] };
+}
+
+/** 건너뛰기: 맨 앞 항목이고 건조기가 비어 있을 때만 지워요. 확인 후 지우는 사이의 변동도 이 조건이 한 번 더 막아요. */
+export function skipQuery(skip: { id: string; locationId: string; dryerId: string }, now: number) {
+  return {
+    sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND id = (SELECT id FROM waitlist_entry WHERE location_id = ?2 AND created_at > ?3 ORDER BY created_at, id LIMIT 1) AND NOT EXISTS (SELECT 1 FROM machine_state WHERE id = ?4 AND (ends_at > ?5 OR out_of_service = 1)) RETURNING id",
+    values: [skip.id, skip.locationId, now - WAITLIST_TTL_MS, skip.dryerId, now],
   };
 }
 

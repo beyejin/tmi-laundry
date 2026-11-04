@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { accuracyQuery, hourlyDistribution, hourlyQuery, isAdmin, periodStarts, reportCountsQuery, statsQuery, summarizeAccuracy, summarizeStats, DAY_MS, type StatPeriod, type StatRow } from "./admin";
 import { eventCleanupQuery, eventInsert, type EventInput } from "./events";
 import { stateSnapshot, type StateRow } from "./laundry";
-import { WAITLIST_TTL_MS, waitlistSnapshot, type WaitlistRow } from "./waitlist";
+import { WAITLIST_TTL_MS, lastChangeQuery, waitlistSnapshot, type WaitlistRow } from "./waitlist";
 
 export function database() {
   if (!env.DB) throw new Error("Laundry database is unavailable");
@@ -16,7 +16,22 @@ export async function readSnapshot() {
     db.prepare("SELECT id, ends_at, updated_at, version, out_of_service, service_note FROM machine_state"),
     db.prepare("SELECT id, location_id, nickname, created_at FROM waitlist_entry WHERE created_at > ?1").bind(now - WAITLIST_TTL_MS),
   ]);
-  return { ...stateSnapshot(machines.results as StateRow[], now), waitlist: waitlistSnapshot(waitlist.results as WaitlistRow[], now) };
+  return { ...stateSnapshot(machines.results as StateRow[], now), waitlist: waitlistSnapshot(waitlist.results as WaitlistRow[], now), waitlistLastChange: await readWaitlistLastChange(now) };
+}
+
+/**
+ * 층별 마지막 명단 변동 시각(건너뛰기 판정용)이에요. 위 batch와 따로 실행해요: event_log가 아직 없는 DB(마이그레이션 0002 전)에서
+ * 이 조회가 실패해도 메인 현황 조회는 성공해야 하기 때문이에요. 실패하면 {}를 돌려주고 기록만 남겨요.
+ */
+export async function readWaitlistLastChange(now: number): Promise<Record<string, number>> {
+  try {
+    const query = lastChangeQuery(now);
+    const result = await database().prepare(query.sql).bind(...query.values).all<{ location_id: string; last_at: number }>();
+    return Object.fromEntries(result.results.map((row) => [row.location_id, row.last_at]));
+  } catch (error) {
+    console.error("Waitlist last change read failed", error);
+    return {};
+  }
 }
 
 export async function snapshotResponse(extra: Record<string, unknown> = {}) {

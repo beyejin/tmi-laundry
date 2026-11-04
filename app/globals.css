@@ -256,6 +256,11 @@ h1, h2, p { margin: 0; }
 .waitlist-cancel { flex-shrink: 0; min-height: calc(var(--spacing-1) * 11); padding: 0 calc(var(--spacing-1) * 3); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); background: var(--color-background-surface); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
 .waitlist-cancel:hover:not(:disabled) { background: var(--color-background-muted); }
 .waitlist-cancel:disabled { opacity: .45; }
+.waitlist-turn { color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 600; line-height: 1.7; }
+.waitlist-turn.is-passed { color: var(--color-text-primary, var(--foreground)); }
+.waitlist-skip { flex-shrink: 0; max-width: 40%; min-height: calc(var(--spacing-1) * 11); padding: 0 calc(var(--spacing-1) * 3); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-element); background: var(--color-background-surface); color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: 1.4; }
+.waitlist-skip.is-armed { border-color: var(--primary); color: var(--foreground); background: var(--color-background-muted); }
+.waitlist-skip:disabled { opacity: .45; }
 .waitlist-empty { margin-top: calc(var(--spacing-1) * 4); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
 .waitlist-form { margin-top: calc(var(--spacing-1) * 5); }
 .waitlist-form label { display: block; font-size: var(--font-size-sm); font-weight: 600; margin-bottom: calc(var(--spacing-1) * 2); }

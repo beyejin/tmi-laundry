@@ -11,10 +11,11 @@ export type Machine = (typeof MACHINES)[number] & {
   outOfService: boolean;
   serviceNote: string | null;
 };
-export type Snapshot = { serverTime: number; machines: Machine[]; waitlist?: WaitlistEntry[] };
+export type Snapshot = { serverTime: number; machines: Machine[]; waitlist?: WaitlistEntry[]; waitlistLastChange?: Record<string, number> };
 type UpdateResult = { status: "saved" | "conflict" | "failed"; error?: string; waitlistRemoved?: boolean };
 
 const emptyWaitlist: WaitlistEntry[] = [];
+const emptyLastChange: Record<string, number> = {};
 const emptyMachines: Machine[] = MACHINES.map((machine) => ({ ...machine, endsAt: null, updatedAt: null, version: 0, outOfService: false, serviceNote: null }));
 
 export function useLaundry() {
@@ -130,6 +131,7 @@ export function useLaundry() {
   return {
     machines: snapshot?.machines ?? emptyMachines,
     waitlist: snapshot?.waitlist ?? emptyWaitlist,
+    waitlistLastChange: snapshot?.waitlistLastChange ?? emptyLastChange,
     loaded: snapshot !== null,
     currentTime: now + offset,
     lastSync: snapshot?.serverTime ?? null,
