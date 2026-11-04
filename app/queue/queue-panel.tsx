@@ -34,7 +34,9 @@ export function QueuePanel({ queue, selectedMachineId, fromQr }: { queue: QueueC
   const tickets = snapshot?.tickets.filter((ticket) => activeStates.includes(ticket.state)).sort((a, b) => a.sequence - b.sequence) ?? [];
   const runs = snapshot?.runs.filter((run) => run.status !== "completed").sort((a, b) => Number(b.status === "pickup" || b.endsAt <= queue.now) - Number(a.status === "pickup" || a.endsAt <= queue.now) || a.endsAt - b.endsAt) ?? [];
   const disabled = busy || offline;
-  const loginHref = typeof window === "undefined" ? "/api/auth/login" : `/api/auth/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  const returnUrl = typeof window === "undefined" ? null : new URL(window.location.href);
+  returnUrl?.searchParams.delete("authError");
+  const loginHref = returnUrl ? `/api/auth/login?returnTo=${encodeURIComponent(returnUrl.pathname + returnUrl.search)}` : "/api/auth/login";
   return <VStack as="section" gap={4} padding={5} className="queue-panel" id="my-queue" aria-labelledby="queue-title">
     <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap">
       <VStack gap={1}><h2 id="queue-title">내 대기와 사용</h2><p className="queue-muted">3생활관 여자 2층부터 5층까지 함께 기다려요.</p></VStack>
@@ -44,12 +46,11 @@ export function QueuePanel({ queue, selectedMachineId, fromQr }: { queue: QueueC
     {queue.message && <p className="queue-feedback" role="status">{queue.message}</p>}
     {authError && <p className="queue-error" role="alert">{authError === "school_account_required" ? "학교 Google 계정으로 로그인해 주세요." : "로그인을 완료하지 못했어요. 다시 로그인해 주세요."}</p>}
     {!snapshot && <p className="queue-muted">{offline ? "대기 현황을 다시 확인해 주세요. 연결 전에는 등록할 수 없어요." : "대기 운영 상태를 확인하고 있어요."}</p>}
-    {snapshot && !snapshot.enabled && <p className="queue-notice">대기제는 준비 중이에요. 현재는 기기를 직접 확인하고 시간을 등록할 수 있어요.</p>}
-    {snapshot?.enabled && <>
-      {snapshot.paused && <p className="queue-notice" role="status">새 대기와 배정을 잠시 멈췄어요. 진행 중인 이용과 수거 기록은 유지돼요.</p>}
-      {!auth?.user ? <VStack gap={3} hAlign="start"><p>학교 Google 계정으로 로그인하면 대기에 참여하고 내 빨래의 수거 알림을 받을 수 있어요.</p>{auth?.configured ? <a className="queue-login" href={loginHref}>학교 Google 계정으로 로그인</a> : <p className="queue-muted">학교 로그인 연결을 준비하고 있어요.</p>}</VStack> : <>
+    {snapshot && !snapshot.enabled && <p className="queue-notice">대기제는 준비 중이에요. 학교 로그인과 이 기기의 알림 설정은 미리 할 수 있어요. 현재는 기기를 직접 확인하고 시간을 등록해 주세요.</p>}
+      {snapshot?.enabled && snapshot.paused && <p className="queue-notice" role="status">새 대기와 배정을 잠시 멈췄어요. 진행 중인 이용과 수거 기록은 유지돼요.</p>}
+      {!auth?.user ? <VStack gap={3} hAlign="start"><p>{snapshot?.enabled ? "학교 Google 계정으로 로그인하면 대기에 참여하고 내 빨래의 수거 알림을 받을 수 있어요." : "학교 Google 계정으로 로그인하고 이 기기의 알림을 미리 설정해 주세요."}</p>{auth?.configured ? <a className="queue-login" href={loginHref}>학교 Google 계정으로 로그인</a> : <p className="queue-muted">학교 로그인 연결을 준비하고 있어요.</p>}</VStack> : <>
         <HStack gap={2} hAlign="between" vAlign="center" wrap="wrap"><span className="queue-account">{auth.user.email}</span><Button variant="ghost" label="로그아웃" isDisabled={disabled} onClick={() => void queue.logout()} /></HStack>
-        {(tickets.length > 0 || runs.length > 0) && <VStack as="ul" gap={0} className="queue-list" aria-label="내 대기표와 사용">
+        {snapshot?.enabled && (tickets.length > 0 || runs.length > 0) && <VStack as="ul" gap={0} className="queue-list" aria-label="내 대기표와 사용">
           {tickets.filter((ticket) => ticket.state === "called").map((ticket) => <TicketRow key={`${ticket.id}:${ticket.callId}`} ticket={ticket} queue={queue} selectedMachineId={selectedMachineId} fromQr={fromQr} />)}
           {runs.map((run) => <RunRow key={run.id} run={run} queue={queue} />)}
           {tickets.filter((ticket) => !["called", "in_use", "pickup"].includes(ticket.state)).map((ticket) => <TicketRow key={`${ticket.id}:${ticket.state}`} ticket={ticket} queue={queue} selectedMachineId={selectedMachineId} fromQr={fromQr} />)}
@@ -63,6 +64,7 @@ export function QueuePanel({ queue, selectedMachineId, fromQr }: { queue: QueueC
           {!capability.available && !capability.iosNeedsInstall && <p className="queue-notice">이 브라우저는 기기 알림을 지원하지 않아요. 알림을 지원하는 브라우저로 열어 주세요.</p>}
           {capability.permission === "denied" && <p className="queue-notice">알림이 차단되어 있어요. 브라우저의 이 사이트 설정에서 알림을 허용한 뒤 새로고침해 주세요.</p>}
         </VStack></details>
+        {snapshot?.enabled && <>
         <Grid columns={{ minWidth: 260, max: 2 }} gap={4}>
           {(["washer", "dryer"] as const).map((type) => {
             const used = tickets.filter((ticket) => ticket.type === type).length;
@@ -73,9 +75,9 @@ export function QueuePanel({ queue, selectedMachineId, fromQr }: { queue: QueueC
         {tickets.length === 0 && runs.length === 0 && <p className="queue-empty">아직 내 대기표가 없어요.</p>}
         <QueueHistory reports={snapshot.reports} tickets={snapshot.tickets.filter((ticket) => !activeStates.includes(ticket.state))} />
         {auth.user.isAdmin && <AdminPanel queue={queue} />}
+        </>}
       </>}
-      <p className="queue-muted">호출 후 5분 안에 기기 앞에서 QR을 열고 시작해 주세요. 알림 전송 후 응답하지 않아 만료되면 재등록은 맨 뒤예요. 알림을 보내지 못한 경우에는 원래 순번으로 보류해요.</p>
-    </>}
+      {snapshot?.enabled && <p className="queue-muted">호출 후 5분 안에 기기 앞에서 QR을 열고 시작해 주세요. 알림 전송 후 응답하지 않아 만료되면 재등록은 맨 뒤예요. 알림을 보내지 못한 경우에는 원래 순번으로 보류해요.</p>}
   </VStack>;
 }
 
