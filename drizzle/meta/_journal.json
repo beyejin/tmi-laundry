@@ -8,6 +8,27 @@
       "when": 1792853132724,
       "tag": "0000_misty_lester",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793800387167,
+      "tag": "0001_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793800387168,
+      "tag": "0002_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793800387169,
+      "tag": "0003_push",
+      "breakpoints": true
     }
   ]
 }

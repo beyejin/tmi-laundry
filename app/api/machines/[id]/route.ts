@@ -1,3 +1,6 @@
+import { env } from "cloudflare:workers";
+import { isPilotMachine } from "@/lib/queue-contract";
+import { queueEnabled } from "@/lib/queue-config";
 import { findMachine, mutationQuery, parseCommand, type StateRow } from "@/lib/laundry";
 import { database, errorResponse, snapshotResponse } from "@/lib/laundry-store";
 
@@ -24,6 +27,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
   if (!command) return errorResponse("남은 시간은 1분부터 180분까지 입력해 주세요.", 400);
   try {
+    if (isPilotMachine(id) && (queueEnabled(env) || await database().prepare("SELECT id FROM queue_meta WHERE id=1").first()))
+      return errorResponse("이 구역은 학교 로그인 후 대기표로 이용해 주세요.", 403);
     const query = mutationQuery(machine.id, command, Date.now());
     const updated = await database().prepare(query.sql).bind(...query.values).first<StateRow>();
     if (!updated) return errorResponse("다른 등록이 먼저 반영됐어요. 최신 현황을 확인하고 다시 시도해 주세요.", 409);

@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MachineQueueStatus } from "@/lib/queue-contract";
 import { MACHINES, type Command } from "@/lib/laundry";
 
 export type Machine = (typeof MACHINES)[number] & {
   endsAt: number | null;
   updatedAt: number | null;
   version: number;
+  queueStatus?: MachineQueueStatus;
+  called?: boolean;
 };
-type Snapshot = { serverTime: number; machines: Machine[] };
+type Snapshot = { serverTime: number; machines: Machine[]; queueEnabled?: boolean };
 type UpdateResult = { status: "saved" | "conflict" | "failed"; error?: string };
 
 const emptyMachines: Machine[] = MACHINES.map((machine) => ({ ...machine, endsAt: null, updatedAt: null, version: 0 }));
@@ -125,6 +128,7 @@ export function useLaundry() {
   return {
     machines: snapshot?.machines ?? emptyMachines,
     loaded: snapshot !== null,
+    queueEnabled: snapshot?.queueEnabled ?? null,
     currentTime: now + offset,
     lastSync: snapshot?.serverTime ?? null,
     connection,

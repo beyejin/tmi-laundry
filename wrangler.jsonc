@@ -21,5 +21,14 @@
   ],
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "APP_ORIGIN": "https://tmi-laundry.hanroona8844.workers.dev",
+    "QUEUE_ENABLED": "false"
+  },
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
   }
 }
