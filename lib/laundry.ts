@@ -35,6 +35,24 @@ export type MachineId = (typeof MACHINES)[number]["id"];
 export type Command = { action: "start" | "adjust" | "clear"; expectedVersion: number; minutes?: number };
 export type StateRow = { id: string; ends_at: number | null; updated_at: number; version: number };
 
+export const STALE_AFTER_MS = 30 * 60_000;
+export type MachineStatus = "unknown" | "running" | "finished" | "stale";
+
+/** 종료 시각이 지난 뒤 30분까지는 finished(예상 종료), 그 뒤는 stale(확인 필요). 종료 시각이 아직 남았으면 running이에요. */
+export function machineStatus(endsAt: number | null, now: number): MachineStatus {
+  if (endsAt === null) return "unknown";
+  if (endsAt > now) return "running";
+  return now - endsAt < STALE_AFTER_MS ? "finished" : "stale";
+}
+
+/** 종료 시각이 지난 뒤 경과 시간 표기: 60분 미만 N분, 24시간 미만 N시간, 그 이상은 하루 넘게. */
+export function formatSinceEnd(endsAt: number, now: number): string {
+  const minutes = Math.max(0, Math.floor((now - endsAt) / 60_000));
+  if (minutes < 60) return `${minutes}분`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}시간`;
+  return "하루 넘게";
+}
+
 export function findLocation(id: string) {
   return LOCATIONS.find((location) => location.id === id);
 }

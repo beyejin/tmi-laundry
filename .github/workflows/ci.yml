@@ -1,0 +1,35 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  WRANGLER_SEND_METRICS: "false"
+  CI: "true"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run db:migrate:local
+      - name: preview 서버 시작
+        run: npm run preview > preview.log 2>&1 &
+      - run: npx -y wait-on@8.0.3 -t 90000 http-get://127.0.0.1:5173/api/machines
+      - run: npm run test:api
+      - name: preview 로그
+        if: failure()
+        run: cat preview.log

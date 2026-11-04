@@ -9,7 +9,7 @@ import { Grid } from "@astryxdesign/core/Grid";
 import { Button } from "@astryxdesign/core/Button";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
-import { BUILDINGS, WINGS, LOCATIONS, findLocation, findMachine } from "@/lib/laundry";
+import { BUILDINGS, WINGS, LOCATIONS, findLocation, findMachine, machineStatus, formatSinceEnd, type MachineStatus } from "@/lib/laundry";
 import { useLaundry, type Machine } from "@/hooks/use-laundry";
 import { countAvailable, orderMachines, type MachineOrder } from "@/app/proto/empty-first";
 import { EmptyFirstBar } from "@/app/proto/empty-first-bar";
@@ -20,19 +20,13 @@ import { useWaitlist } from "@/hooks/use-waitlist";
 import { DryerCard, WaitlistPanel } from "@/app/waitlist-panel";
 
 type DialogState = { machine: Machine; action: "adjust" | "clear" };
-type MachineStatus = "unknown" | "running" | "finished";
 
 function remainingSeconds(machine: Machine, now: number) {
   return machine.endsAt === null ? null : Math.max(0, Math.ceil((machine.endsAt - now) / 1_000));
 }
 
-function machineStatus(machine: Machine, now: number): MachineStatus {
-  const seconds = remainingSeconds(machine, now);
-  return seconds === null ? "unknown" : seconds > 0 ? "running" : "finished";
-}
-
-const statusVariants = { unknown: "neutral", running: "success", finished: "warning" } as const;
-const statusNames: Record<MachineStatus, string> = { unknown: "미확인", running: "등록된 사용 중", finished: "예상 종료" };
+const statusVariants = { unknown: "neutral", running: "success", finished: "warning", stale: "warning" } as const;
+const statusNames: Record<MachineStatus, string> = { unknown: "미확인", running: "등록된 사용 중", finished: "예상 종료", stale: "확인 필요" };
 
 function timeLabel(time: number) {
   return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(time);
@@ -160,9 +154,9 @@ export default function Home() {
   const locationWaitlist = allWaitlist.filter((entry) => entry.locationId === locationId);
   const dryers = machines.filter((machine) => machine.type === "dryer");
   const selected = machines.find((machine) => machine.id === selectedId);
-  const selectedStatus = selected ? machineStatus(selected, currentTime) : "unknown";
-  const counts = machines.reduce((total, machine) => { total[machineStatus(machine, currentTime)] += 1; return total; }, { running: 0, finished: 0, unknown: 0 });
-  const sortableMachines = machines.map((machine) => ({ ...machine, status: machineStatus(machine, currentTime), remainingSeconds: remainingSeconds(machine, currentTime) }));
+  const selectedStatus = selected ? machineStatus(selected.endsAt, currentTime) : "unknown";
+  const counts = machines.reduce((total, machine) => { const status = machineStatus(machine.endsAt, currentTime); total[status === "stale" ? "unknown" : status] += 1; return total; }, { running: 0, finished: 0, unknown: 0 });
+  const sortableMachines = machines.map((machine) => ({ ...machine, status: machineStatus(machine.endsAt, currentTime), remainingSeconds: remainingSeconds(machine, currentTime) }));
   const orderedMachines = proto && loaded ? orderMachines(sortableMachines, sortMode) : machines;
   const availableCounts = countAvailable(sortableMachines);
   const selectedAvailable = Boolean(proto && loaded && selectedStatus === "unknown");
@@ -204,19 +198,19 @@ export default function Home() {
             {proto && <EmptyFirstBar mode={sortMode} onMode={setSortMode} loaded={loaded} washers={availableCounts.washer} dryers={availableCounts.dryer} isDisabled={pending !== null} />}
             <Grid columns={3} gap={2} className="machine-grid">
               {orderedMachines.map((machine) => {
-                const status = machineStatus(machine, currentTime);
+                const status = machineStatus(machine.endsAt, currentTime);
                 const seconds = remainingSeconds(machine, currentTime);
                 const isSelected = selectedId === machine.id;
                 const available = proto && loaded && status === "unknown";
                 const statusLabel = !loaded ? "확인 중" : available ? "지금 쓸 수 있어요" : statusNames[status];
                 const Icon = machine.type === "dryer" ? Wind : WashingMachine;
-                return <button type="button" key={machine.id} className={`machine-tile status-${status} ${isSelected ? "is-selected" : ""}${available ? " is-available" : ""}`} aria-pressed={isSelected} aria-label={`${machine.name}, ${statusLabel}${status === "running" ? `, 예상 ${Math.floor(seconds! / 60)}분 ${seconds! % 60}초 남음` : ""}`} onClick={() => selectMachine(machine.id)}>
+                return <button type="button" key={machine.id} className={`machine-tile status-${status} ${isSelected ? "is-selected" : ""}${available ? " is-available" : ""}`} aria-pressed={isSelected} aria-label={`${machine.name}, ${statusLabel}${status === "running" ? `, 예상 ${Math.floor(seconds! / 60)}분 ${seconds! % 60}초 남음` : status === "stale" ? `, 예상 종료 후 ${formatSinceEnd(machine.endsAt!, currentTime)} 지남` : ""}`} onClick={() => selectMachine(machine.id)}>
                   {isSelected && <span className="selected-check" aria-hidden="true"><Check size={12} strokeWidth={3} /></span>}
                   <Icon className="tile-icon" size={24} strokeWidth={1.65} />
                   <span className="tile-name">{machine.name}</span>
                   <HStack as="span" gap={1} hAlign="center" vAlign="center" className="tile-status"><StatusDot variant={available ? "success" : statusVariants[status]} label={statusLabel} />{statusLabel}</HStack>
-                  <span className={`tile-time ${status !== "running" ? "tile-time-text" : ""}`}>{!loaded ? "확인 중" : status === "running" ? countdown(seconds!) : status === "finished" ? "종료" : "미등록"}</span>
-                  <span className="tile-time-caption">{available ? "등록된 시간이 없어요" : status === "running" ? "예상 남은 시간" : status === "finished" ? "수거 여부 미확인" : "사용 여부 미확인"}</span>
+                  <span className={`tile-time ${status !== "running" ? "tile-time-text" : ""}`}>{!loaded ? "확인 중" : status === "running" ? countdown(seconds!) : status === "finished" ? "종료" : status === "stale" ? `끝난 지 ${formatSinceEnd(machine.endsAt!, currentTime)}` : "미등록"}</span>
+                  <span className="tile-time-caption">{available ? "등록된 시간이 없어요" : status === "running" ? "예상 남은 시간" : status === "finished" ? "수거 여부 미확인" : status === "stale" ? "기기를 확인해 주세요" : "사용 여부 미확인"}</span>
                   <span className="tile-default">기본 {machine.defaultMinutes}분</span>
                 </button>;
               })}
@@ -227,7 +221,7 @@ export default function Home() {
           <VStack as="section" gap={0} className={`detail-panel ${selected ? "has-selection" : ""}`} aria-labelledby="detail-title">
             {selected ? <>
               <HStack hAlign="between" vAlign="center" className="detail-heading"><VStack gap={0}><span className="detail-eyebrow">{fromQr ? "QR로 선택한 기기" : "선택한 기기"}</span><h2 id="detail-title">{selected.name}</h2></VStack><span className={`detail-status status-${selectedStatus}${selectedAvailable ? " is-available" : ""}`}><StatusDot variant={selectedAvailable ? "success" : statusVariants[selectedStatus]} label={selectedAvailable ? "지금 쓸 수 있어요" : statusNames[selectedStatus]} />{!loaded ? "확인 중" : selectedAvailable ? "지금 쓸 수 있어요" : statusNames[selectedStatus]}</span></HStack>
-              <HStack hAlign="between" wrap="wrap" className="detail-readout"><span>{!loaded ? "현황을 확인하고 있어요." : selectedStatus === "running" ? `${timeLabel(selected.endsAt!)} 종료 예상` : selectedStatus === "finished" ? "빨래가 남아 있을 수 있어요." : "등록된 시간 정보가 없어요."}</span><span>기본 {selected.defaultMinutes}분</span></HStack>
+              <HStack hAlign="between" wrap="wrap" className="detail-readout"><span>{!loaded ? "현황을 확인하고 있어요." : selectedStatus === "running" ? `${timeLabel(selected.endsAt!)} 종료 예상` : selectedStatus === "finished" ? "빨래가 남아 있을 수 있어요." : selectedStatus === "stale" ? `예상 종료 후 ${formatSinceEnd(selected.endsAt!, currentTime)} 지났어요. 실제 사용 여부를 확인해 주세요.` : "등록된 시간 정보가 없어요."}</span><span>기본 {selected.defaultMinutes}분</span></HStack>
               <p className="start-instruction">{location.label}의 기기가 맞는지 확인하고, 실제로 켠 뒤 시작을 눌러 주세요.</p>
               <Button className="primary-button" variant="primary" label={pending === selected.id ? "저장 중이에요" : selectedStatus === "running" ? "시작이 등록됐어요" : `${selected.defaultMinutes}분 시작`} isDisabled={actionsDisabled || selectedStatus === "running"} isLoading={pending === selected.id} onClick={() => void startMachine(selected)} />
               <Button className="secondary-button" variant="secondary" label={selected.endsAt === null ? "남은 시간 직접 입력" : "남은 시간 수정"} isDisabled={actionsDisabled} onClick={() => openDialog(selected, "adjust")} />

@@ -43,6 +43,8 @@ npm run build
 npm run test:api
 ```
 
+탭이 숨겨져 있으면 10초 자동 확인을 멈추고, 다시 보이는 즉시 갱신해요. 종료 시각이 30분 이상 지난 기기는 `예상 종료` 대신 `확인 필요`로 표시하며 미확인 개수에 합산해요.
+
 단위 검증은 실제 SQLite에서 종료 시각, 중복 등록, 동시 수정, 입력값 검사를 확인합니다. API 검증은 로컬 서버의 3생활관 여자 2층 세탁기 2와 건조기 1, 3층 세탁기 2를 잠시 변경한 뒤 등록을 취소합니다. 운영 서버를 수정하지 않도록 로컬 주소로 고정했습니다.
 
 ## Cloudflare 배포
@@ -69,12 +71,13 @@ npm run deploy
 
 - `app/page.tsx`: 기기 현황판과 시작 및 수정 화면
 - `hooks/use-laundry.ts`: 서버 동기화, 시간 보정, 요청 중복 및 오래된 응답 방지
-- `lib/laundry.ts`: 기기 정의, 입력 검증, 동시에 등록할 때 충돌을 막는 SQL
+- `lib/laundry.ts`: 기기 정의, 입력 검증, 동시에 등록할 때 충돌을 막는 SQL, 상태 판정(`machineStatus`: 미확인/사용 중/예상 종료/확인 필요)
 - `lib/laundry-store.ts`: D1 접근과 API 응답
 - `app/api/machines/`: 현황 조회 및 변경 API
 - `app/api/waitlist/`, `lib/waitlist.ts`, `hooks/use-waitlist.ts`, `app/waitlist-panel.tsx`: 건조기 대기자 명단
 - `app/qr/`: 기기별 QR 안내문과 인쇄
 - `drizzle/`: 데이터베이스 스키마
+- `.github/workflows/ci.yml`: PR과 main push마다 타입 검사, 테스트, 빌드, 로컬 API 검증을 실행(배포는 포함하지 않음)
 
 React와 Vinext, Cloudflare Workers 및 D1을 사용합니다. UI는 Astryx 컴포넌트와 토큰을 사용합니다.
 
