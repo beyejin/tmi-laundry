@@ -104,7 +104,7 @@ npm run deploy
 - `lib/laundry-store.ts`: D1 접근, API 응답, POST 공통 가드(`readJsonBody`), 이용 기록(`logEvent`)
 - `app/api/machines/`: 현황 조회 및 변경 API. 건조기 시작 요청에 내 대기 항목(`waitlist`)을 함께 보내면 같은 D1 batch에서 명단을 정리해요.
 - `lib/events.ts`, `event_log` 테이블: 이용 기록(시작·수정·취소·대기 등록·대기 빠짐·차례 정리). 별명, 토큰, IP는 기록하지 않고 정리 쿼리(`eventCleanupQuery`, 120일 경과 행 삭제)는 만들어 두었고, 관리자가 전체 통계를 불러올 때(`/api/admin/overview`, `stats=0`인 30초 폴링에서는 실행하지 않아요) 함께 실행해요. 시범 운영 기간이 120일보다 짧아 이것으로 충분해요. 기록 실패는 요청을 막지 않아요.
-- `app/api/waitlist/`, `lib/waitlist.ts`, `hooks/use-waitlist.ts`, `app/waitlist-panel.tsx`: 건조기 대기자 명단
+- `app/api/waitlist/`, `lib/waitlist.ts`, `hooks/use-waitlist.ts`, `app/waitlist-panel.tsx`: 건조기 대기자 명단과 맨 앞 대기자 건너뛰기
 - `lib/admin.ts`, `app/admin/`, `app/api/admin/`: 관리자 인증(`isAdmin`), 점검 전환·초기화·통계·CSV 순수 함수와 화면, API
 - `app/api/machines/[id]/report/`, `hooks/use-reports.ts`: 이용자 고장 신고
 - `app/qr/`: 기기별 QR 안내문과 인쇄
@@ -112,6 +112,17 @@ npm run deploy
 - `.github/workflows/ci.yml`: PR과 main push마다 타입 검사, 테스트, 빌드, 로컬 API 검증을 실행(배포는 포함하지 않음)
 
 React와 Vinext, Cloudflare Workers 및 D1을 사용합니다. UI는 Astryx 컴포넌트와 토큰을 사용합니다.
+
+## 대기자 건너뛰기 규칙
+
+맨 앞 대기자가 건조기가 비었는데도 오지 않을 때, 누구나(토큰 없이) 그 사람을 명단에서 뺄 수 있습니다. 판정은 화면과 서버가 같은 순수 함수(`lib/waitlist.ts`의 `canSkip`)로 합니다.
+
+- 건조기는 층의 첫 번째 건조기입니다. 사용 중이면 건너뛸 수 없고(표시 없음), 점검 중이어도 건너뛸 수 없습니다.
+- 차례가 시작된 시각은 `max(등록 시각, 건조기가 빈 시각, 마지막 명단 변동 시각)`이고, 거기서 `SKIP_AFTER_MS`(10분)가 지나야 `건너뛰기`가 나타납니다. 그 전에는 `차례예요 · N분 안에 시작해 주세요`로 표시합니다. 내 항목이면 버튼 대신 `지금 시작해 주세요`입니다.
+- 버튼은 한 번 더 눌러야 실행됩니다(4초 안에 다시 누르지 않으면 원래대로).
+- 서버는 맨 앞 항목인지, 건조기가 사용·점검 중이 아닌지를 삭제 SQL 안에서 한 번 더 확인합니다. 그 사이 바뀌었으면 409 `그 사이 차례가 바뀌었어요.`입니다.
+- 마지막 명단 변동 시각은 `event_log`(`waitlist_leave`, `waitlist_turn`, `waitlist_skip`, `admin_remove`)에서 읽어 `/api/machines` 응답의 `waitlistLastChange`로 내려줍니다. 이 조회가 실패하면(예: 마이그레이션 0002 전 DB) 현황 조회는 그대로 성공하고 빈 값으로 처리합니다.
+- **알려진 한계**: 이용 기록은 best-effort라 기록이 누락되면 마지막 변동 시각이 실제보다 이르게 잡혀 10분이 되기 전에 건너뛰기가 허용될 수 있습니다.
 
 ## 시범 운영 범위
 

@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDb } from './schema.mjs';
+import { EVENT_KINDS, eventInsert } from '../lib/events.ts';
 import { mutationQuery } from '../lib/laundry.ts';
-import { WAITLIST_LIMIT, WAITLIST_TTL_MS, estimateTurns, hashToken, joinQuery, leaveQuery, turnQuery, parseWaitlistCommand, waitlistSnapshot, expiredCleanupQuery } from '../lib/waitlist.ts';
+import { WAITLIST_LIMIT, WAITLIST_TTL_MS, estimateTurns, hashToken, joinQuery, leaveQuery, turnQuery, parseWaitlistCommand, waitlistSnapshot, expiredCleanupQuery, SKIP_AFTER_MS, SKIP_EVENT_KINDS, canSkip, dryerFreeSince, headQuery, lastChangeQuery, skipQuery, turnSince } from '../lib/waitlist.ts';
 
 const LOC = 'h3-women-2';
 const NOW = 1_800_000_000_000;
@@ -187,3 +188,111 @@ for (const expectedVersion of [0, 3]) {
     t.db.close();
   });
 }
+
+// ---- 건너뛰기 ----
+
+test('dryerFreeSince: 점검, 사용 중, 종료됨, 행 없음', () => {
+  assert.equal(dryerFreeSince({ endsAt: NOW - 1000, updatedAt: NOW - 1000, outOfService: true }, NOW), null);
+  assert.equal(dryerFreeSince({ endsAt: NOW + 1, updatedAt: NOW - 5, outOfService: false }, NOW), null);
+  assert.equal(dryerFreeSince({ endsAt: NOW, updatedAt: NOW - 5, outOfService: false }, NOW), NOW);
+  assert.equal(dryerFreeSince({ endsAt: NOW - 60_000, updatedAt: NOW - 5, outOfService: false }, NOW), NOW - 60_000);
+  assert.equal(dryerFreeSince({ endsAt: null, updatedAt: NOW - 7, outOfService: false }, NOW), NOW - 7);
+  assert.equal(dryerFreeSince({ endsAt: null, updatedAt: null, outOfService: false }, NOW), 0);
+});
+
+test('turnSince: 등록, 건조기 비움, 마지막 변동 중 가장 늦은 값', () => {
+  assert.equal(turnSince({ createdAt: 100 }, 50, null), 100);
+  assert.equal(turnSince({ createdAt: 100 }, 300, null), 300);
+  assert.equal(turnSince({ createdAt: 100 }, 300, 200), 300);
+  assert.equal(turnSince({ createdAt: 100 }, 300, 400), 400);
+  assert.equal(turnSince({ createdAt: 100 }, 0, null), 100);
+});
+
+test('canSkip: 9분59초는 대기, 10분은 허용, 사용 중과 점검은 사유 반환', () => {
+  const free = { endsAt: null, updatedAt: null, outOfService: false };
+  const head = { createdAt: NOW };
+  assert.deepEqual(canSkip({ head, dryer: free, lastChangeAt: null, now: NOW + SKIP_AFTER_MS - 1 }), { ok: false, reason: 'wait', waitMs: 1 });
+  assert.deepEqual(canSkip({ head, dryer: free, lastChangeAt: null, now: NOW + SKIP_AFTER_MS }), { ok: true });
+  assert.deepEqual(canSkip({ head, dryer: free, lastChangeAt: NOW + 60_000, now: NOW + SKIP_AFTER_MS }), { ok: false, reason: 'wait', waitMs: 60_000 });
+  assert.deepEqual(canSkip({ head, dryer: { ...free, endsAt: NOW + SKIP_AFTER_MS + 60_000 }, lastChangeAt: null, now: NOW + SKIP_AFTER_MS }), { ok: false, reason: 'busy' });
+  assert.deepEqual(canSkip({ head, dryer: { ...free, outOfService: true }, lastChangeAt: null, now: NOW + SKIP_AFTER_MS * 5 }), { ok: false, reason: 'service' });
+  // 건조기가 늦게 끝나면 끝난 시각부터 10분을 세요.
+  const ended = { ...free, endsAt: NOW + 30 * 60_000 };
+  assert.equal(canSkip({ head, dryer: ended, lastChangeAt: null, now: NOW + 30 * 60_000 + SKIP_AFTER_MS - 1 }).ok, false);
+  assert.equal(canSkip({ head, dryer: ended, lastChangeAt: null, now: NOW + 30 * 60_000 + SKIP_AFTER_MS }).ok, true);
+});
+
+test('건너뛰기 명령 검증: id만 필요', () => {
+  assert.deepEqual(parseWaitlistCommand({ action: 'skip', id: 'abc-1' }), { action: 'skip', id: 'abc-1' });
+  for (const bad of [{ action: 'skip' }, { action: 'skip', id: '' }, { action: 'skip', id: 'a b' }, { action: 'skip', id: 5 }]) assert.equal(parseWaitlistCommand(bad), null, JSON.stringify(bad));
+});
+
+function skipRun(t, id, now, locationId = LOC) {
+  const q = skipQuery({ id, locationId, dryerId: DRYER }, now);
+  return t.db.prepare(q.sql).get(bind(q));
+}
+
+test('skipQuery: 맨 앞이 아니면 삭제 안 함, 맨 앞이면 삭제', () => {
+  const t = setup();
+  t.join('a', '301호', NOW);
+  t.join('b', '302호', NOW + 1);
+  assert.equal(skipRun(t, 'b', NOW + SKIP_AFTER_MS), undefined);
+  assert.equal(t.rows().length, 2);
+  assert.equal(skipRun(t, 'a', NOW + SKIP_AFTER_MS)?.id, 'a');
+  assert.deepEqual(t.rows().map((row) => row.id), ['b']);
+  t.db.close();
+});
+
+test('skipQuery: 건조기 사용 중이거나 점검 중이면 삭제 안 함', () => {
+  const t = setup();
+  t.join('a', '301호', NOW);
+  const later = NOW + SKIP_AFTER_MS;
+  t.db.prepare('INSERT INTO machine_state (id, ends_at, updated_at, version) VALUES (?1, ?2, ?3, 1)').run(DRYER, later + 1, NOW);
+  assert.equal(skipRun(t, 'a', later), undefined);
+  t.db.prepare('UPDATE machine_state SET ends_at = ?2 WHERE id = ?1').run(DRYER, later);
+  assert.equal(skipRun(t, 'a', later)?.id, 'a');
+  t.join('c', '303호', NOW);
+  t.db.prepare('UPDATE machine_state SET ends_at = NULL, out_of_service = 1 WHERE id = ?1').run(DRYER);
+  assert.equal(skipRun(t, 'c', later), undefined);
+  assert.equal(t.rows().length, 1);
+  t.db.close();
+});
+
+test('skipQuery: 만료된 맨 앞은 head가 아니므로 거절하고 다음 사람이 head', () => {
+  const t = setup();
+  t.join('old', '301호', NOW);
+  t.join('new', '302호', NOW + 60_000);
+  const later = NOW + WAITLIST_TTL_MS + 1;
+  assert.equal(skipRun(t, 'old', later), undefined);
+  assert.equal(skipRun(t, 'new', later)?.id, 'new');
+  t.db.close();
+});
+
+test('정렬 일치: created_at이 같으면 id 순서가 waitlistSnapshot과 SQL head에서 같음', () => {
+  const t = setup();
+  t.join('zzz', '301호', NOW);
+  t.join('aaa', '302호', NOW);
+  t.join('mmm', '303호', NOW);
+  const snapshotHead = waitlistSnapshot(t.rows(), NOW + 1)[0].id;
+  const q = headQuery(LOC, NOW + 1);
+  assert.equal(t.db.prepare(q.sql).get(bind(q)).id, snapshotHead);
+  assert.equal(snapshotHead, 'aaa');
+  assert.equal(skipRun(t, 'zzz', NOW + SKIP_AFTER_MS), undefined);
+  assert.equal(skipRun(t, 'aaa', NOW + SKIP_AFTER_MS)?.id, 'aaa');
+  t.db.close();
+});
+
+test('lastChangeQuery: 층별 마지막 명단 변동만, 만료 이전과 다른 종류는 제외', () => {
+  const t = setup();
+  const log = (event, now) => { const q = eventInsert(event, now); t.db.prepare(q.sql).run(bind(q)); };
+  log({ kind: 'waitlist_leave', locationId: LOC }, NOW + 10);
+  log({ kind: 'admin_remove', locationId: LOC }, NOW + 30);
+  log({ kind: 'waitlist_skip', locationId: 'h3-women-3' }, NOW + 20);
+  log({ kind: 'waitlist_join', locationId: LOC }, NOW + 99);
+  log({ kind: 'waitlist_turn', locationId: 'h3-women-4' }, NOW - WAITLIST_TTL_MS - 5);
+  const q = lastChangeQuery(NOW + 100);
+  const rows = Object.fromEntries(t.db.prepare(q.sql).all(bind(q)).map((row) => [row.location_id, row.last_at]));
+  assert.deepEqual(rows, { [LOC]: NOW + 30, 'h3-women-3': NOW + 20 });
+  for (const kind of SKIP_EVENT_KINDS) assert.ok(EVENT_KINDS.includes(kind), kind);
+  t.db.close();
+});
