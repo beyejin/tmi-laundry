@@ -1,4 +1,4 @@
-import { findLocation } from "./laundry.ts";
+import { findLocation, isWaitlistId, isWaitlistToken } from "./laundry.ts";
 
 export const WAITLIST_LIMIT = 8;
 export const WAITLIST_TTL_MS = 3 * 60 * 60_000;
@@ -27,8 +27,7 @@ export function parseWaitlistCommand(value: unknown): WaitlistCommand | null {
     return nickname ? { action: "join", locationId: input.locationId, nickname } : null;
   }
   if (input.action === "leave") {
-    if (typeof input.id !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(input.id)) return null;
-    if (typeof input.token !== "string" || input.token.length < 16 || input.token.length > 128) return null;
+    if (!isWaitlistId(input.id) || !isWaitlistToken(input.token)) return null;
     return { action: "leave", id: input.id, token: input.token };
   }
   return null;
@@ -42,7 +41,21 @@ export function joinQuery(entry: { id: string; locationId: string; nickname: str
 }
 
 export function leaveQuery(id: string, ownerHash: string) {
-  return { sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND owner_hash = ?2 RETURNING id", values: [id, ownerHash] };
+  return { sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND owner_hash = ?2 RETURNING id, location_id", values: [id, ownerHash] };
+}
+
+/**
+ * 건조기 시작과 같은 batch에서 바로 다음 문장으로 실행해요. 지우는 조건은 두 겹이에요.
+ * - changes() > 0: D1 batch는 한 연결에서 순서대로 실행되므로 직전 시작 문장이 실제로 행을 바꿨을 때만 지워요.
+ *   같은 밀리초에 진 요청은 시작이 0행이라 여기서 걸러져요.
+ * - EXISTS: 직전 문장이 맞는 기기 행 상태(version, updated_at)인지 한 번 더 확인해요.
+ *   EXISTS만으로는 이긴 요청이 만든 행(version = 기대값+1, updated_at = now)이 진 요청에도 맞아 보여서 부족해요.
+ */
+export function turnQuery(turn: { entryId: string; ownerHash: string; locationId: string; machineId: string; newVersion: number; now: number }) {
+  return {
+    sql: "DELETE FROM waitlist_entry WHERE id = ?1 AND owner_hash = ?2 AND location_id = ?3 AND EXISTS (SELECT 1 FROM machine_state WHERE id = ?4 AND version = ?5 AND updated_at = ?6) AND changes() > 0 RETURNING id",
+    values: [turn.entryId, turn.ownerHash, turn.locationId, turn.machineId, turn.newVersion, turn.now],
+  };
 }
 
 export function expiredCleanupQuery(now: number) {

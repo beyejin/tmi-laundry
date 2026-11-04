@@ -131,9 +131,9 @@ export default function Home() {
   }
 
   async function startMachine(machine: Machine) {
-    const result = await updateMachine(machine, "start");
-    const first = locationWaitlist[0];
-    if (result.status === "saved" && machine.type === "dryer" && first && mine[first.id]) await leaveWaitlist(first.id, "차례가 되어 대기 명단에서 뺐어요.");
+    // 내 대기 항목이 있으면 서버가 시작과 같은 batch에서 명단을 정리해요. 순번과 상관없이 이 층의 내 첫 항목을 보내요.
+    const own = machine.type === "dryer" ? locationWaitlist.find((entry) => mine[entry.id]) : undefined;
+    await updateMachine(machine, "start", undefined, own ? { id: own.id, token: mine[own.id] } : undefined);
   }
 
   async function submitDialog() {

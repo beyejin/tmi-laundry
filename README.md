@@ -45,7 +45,9 @@ npm run test:api
 
 탭이 숨겨져 있으면 10초 자동 확인을 멈추고, 다시 보이는 즉시 갱신해요. 종료 시각이 30분 이상 지난 기기는 `예상 종료` 대신 `확인 필요`로 표시하며 미확인 개수에 합산해요.
 
-단위 검증은 실제 SQLite에서 종료 시각, 중복 등록, 동시 수정, 입력값 검사를 확인합니다. API 검증은 로컬 서버의 3생활관 여자 2층 세탁기 2와 건조기 1, 3층 세탁기 2를 잠시 변경한 뒤 등록을 취소합니다. 운영 서버를 수정하지 않도록 로컬 주소로 고정했습니다.
+단위 검증은 실제 SQLite에서 종료 시각, 중복 등록, 동시 수정, 입력값 검사를 확인합니다. API 검증은 로컬 서버의 3생활관 여자 2층 세탁기 2와 건조기 1, 3층 세탁기 2를 잠시 변경한 뒤 등록을 취소합니다. 건조기 시작과 함께 내 대기 항목이 정리되는지(실패한 시작은 명단 유지)는 5층 건조기로 확인합니다. 운영 서버를 수정하지 않도록 로컬 주소로 고정했습니다.
+
+이용 횟수는 `npx wrangler d1 execute DB --local --command "SELECT kind, COUNT(*) FROM event_log GROUP BY kind"`로 확인합니다(운영은 `--remote`). 배포 전 `npm run db:migrate:remote`로 0002를 적용해야 해요.
 
 ## Cloudflare 배포
 
@@ -72,11 +74,12 @@ npm run deploy
 - `app/page.tsx`: 기기 현황판과 시작 및 수정 화면
 - `hooks/use-laundry.ts`: 서버 동기화, 시간 보정, 요청 중복 및 오래된 응답 방지
 - `lib/laundry.ts`: 기기 정의, 입력 검증, 동시에 등록할 때 충돌을 막는 SQL, 상태 판정(`machineStatus`: 미확인/사용 중/예상 종료/확인 필요)
-- `lib/laundry-store.ts`: D1 접근과 API 응답
-- `app/api/machines/`: 현황 조회 및 변경 API
+- `lib/laundry-store.ts`: D1 접근, API 응답, POST 공통 가드(`readJsonBody`), 이용 기록(`logEvent`)
+- `app/api/machines/`: 현황 조회 및 변경 API. 건조기 시작 요청에 내 대기 항목(`waitlist`)을 함께 보내면 같은 D1 batch에서 명단을 정리해요.
+- `lib/events.ts`, `event_log` 테이블: 이용 기록(시작·수정·취소·대기 등록·대기 빠짐·차례 정리). 별명, 토큰, IP는 기록하지 않고 정리 쿼리(`eventCleanupQuery`, 120일 경과 행 삭제)는 만들어 두었고, 다음 PR(C)의 관리자 개요에서 실행해요. 그때까지는 기록이 쌓이기만 해요. 기록 실패는 요청을 막지 않아요.
 - `app/api/waitlist/`, `lib/waitlist.ts`, `hooks/use-waitlist.ts`, `app/waitlist-panel.tsx`: 건조기 대기자 명단
 - `app/qr/`: 기기별 QR 안내문과 인쇄
-- `drizzle/`: 데이터베이스 스키마
+- `drizzle/`: 데이터베이스 스키마(0002가 `event_log`). 테스트는 `tests/schema.mjs`가 이 마이그레이션을 그대로 적용해 메모리 DB를 만들어요.
 - `.github/workflows/ci.yml`: PR과 main push마다 타입 검사, 테스트, 빌드, 로컬 API 검증을 실행(배포는 포함하지 않음)
 
 React와 Vinext, Cloudflare Workers 및 D1을 사용합니다. UI는 Astryx 컴포넌트와 토큰을 사용합니다.

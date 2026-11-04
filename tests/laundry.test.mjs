@@ -1,11 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
+import { createDb } from './schema.mjs';
 import { BUILDINGS, WINGS, LOCATIONS, MACHINES, STALE_AFTER_MS, findLocation, findMachine, formatSinceEnd, machineStatus, mutationQuery, parseCommand, stateSnapshot } from '../lib/laundry.ts';
 
 function setup() {
-  const db = new DatabaseSync(':memory:');
-  db.exec('CREATE TABLE machine_state (id TEXT PRIMARY KEY, ends_at INTEGER, updated_at INTEGER NOT NULL, version INTEGER NOT NULL)');
+  const db = createDb();
   return {
     db,
     read: (now) => stateSnapshot(db.prepare('SELECT * FROM machine_state').all(), now),
@@ -172,4 +171,15 @@ test('종료 시각이 40분 지난 행에도 start가 성공', () => {
   assert.equal(row.version, 2);
   assert.equal(row.ends_at, now + 36 * 60_000);
   s.close();
+});
+
+test('parseCommand: waitlist는 start에서만 허용하고 id와 token 규칙을 검사', () => {
+  const waitlist = { id: 'abc-123', token: 'x'.repeat(32) };
+  assert.deepEqual(parseCommand({ action: 'start', expectedVersion: 2, waitlist }), { action: 'start', expectedVersion: 2, waitlist });
+  assert.equal(parseCommand({ action: 'start', expectedVersion: 2 }).waitlist, undefined);
+  assert.equal(parseCommand({ action: 'adjust', expectedVersion: 2, minutes: 10, waitlist }), null);
+  assert.equal(parseCommand({ action: 'clear', expectedVersion: 2, waitlist }), null);
+  for (const bad of [null, [], 'x', {}, { id: waitlist.id }, { ...waitlist, token: 'short' }, { ...waitlist, token: 'x'.repeat(129) }, { ...waitlist, id: '' }, { ...waitlist, id: 'a b' }, { ...waitlist, id: 5 }]) {
+    assert.equal(parseCommand({ action: 'start', expectedVersion: 2, waitlist: bad }), null, JSON.stringify(bad));
+  }
 });

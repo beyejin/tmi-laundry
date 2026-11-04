@@ -1,19 +1,12 @@
-import { database, errorResponse, snapshotResponse } from "@/lib/laundry-store";
+import { database, errorResponse, logEvent, readJsonBody, snapshotResponse } from "@/lib/laundry-store";
 import { expiredCleanupQuery, hashToken, joinQuery, leaveQuery, parseWaitlistCommand } from "@/lib/waitlist";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!request.headers.get("content-type")?.includes("application/json")) return errorResponse("요청 형식을 확인해 주세요.", 415);
-  if (request.headers.get("sec-fetch-site") === "cross-site") return errorResponse("세탁실 화면에서 등록해 주세요.", 403);
-  let command;
-  try {
-    const body = await request.text();
-    if (body.length > 1024) return errorResponse("요청이 너무 커요.", 413);
-    command = parseWaitlistCommand(JSON.parse(body));
-  } catch {
-    return errorResponse("입력값을 확인해 주세요.", 400);
-  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return body.response;
+  const command = parseWaitlistCommand(body.value);
   if (!command) return errorResponse("별명은 1자부터 12자까지 입력해 주세요.", 400);
   try {
     const db = database();
@@ -25,11 +18,13 @@ export async function POST(request: Request) {
       const insert = joinQuery({ id, locationId: command.locationId, nickname: command.nickname, ownerHash: await hashToken(token) }, now);
       const [, inserted] = await db.batch([db.prepare(cleanup.sql).bind(...cleanup.values), db.prepare(insert.sql).bind(...insert.values)]);
       if (!inserted.results.length) return errorResponse("대기 인원이 가득 찼거나 같은 이름이 이미 있어요.", 409);
+      await logEvent({ kind: "waitlist_join", locationId: command.locationId, at: now });
       return await snapshotResponse({ joined: { id, token } });
     }
     const query = leaveQuery(command.id, await hashToken(command.token));
-    const removed = await db.prepare(query.sql).bind(...query.values).first<{ id: string }>();
+    const removed = await db.prepare(query.sql).bind(...query.values).first<{ id: string; location_id: string }>();
     if (!removed) return errorResponse("이미 빠졌거나 내 대기 기록이 아니에요.", 404);
+    await logEvent({ kind: "waitlist_leave", locationId: removed.location_id, at: now });
     return await snapshotResponse();
   } catch (error) {
     console.error("Waitlist update failed", error);

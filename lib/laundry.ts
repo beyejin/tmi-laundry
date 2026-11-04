@@ -32,7 +32,7 @@ export const MACHINES = LOCATIONS.flatMap((location) => EQUIPMENT.map((machine) 
 })));
 
 export type MachineId = (typeof MACHINES)[number]["id"];
-export type Command = { action: "start" | "adjust" | "clear"; expectedVersion: number; minutes?: number };
+export type Command = { action: "start" | "adjust" | "clear"; expectedVersion: number; minutes?: number; waitlist?: { id: string; token: string } };
 export type StateRow = { id: string; ends_at: number | null; updated_at: number; version: number };
 
 export const STALE_AFTER_MS = 30 * 60_000;
@@ -61,16 +61,33 @@ export function findMachine(id: string) {
   return MACHINES.find((machine) => machine.id === id);
 }
 
+export function isWaitlistId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value);
+}
+
+export function isWaitlistToken(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 16 && value.length <= 128;
+}
+
 export function parseCommand(value: unknown): Command | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
   if (!["start", "adjust", "clear"].includes(String(input.action))) return null;
   if (!Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 0) return null;
   if (input.action === "adjust" && (!Number.isInteger(input.minutes) || Number(input.minutes) < 1 || Number(input.minutes) > 180)) return null;
+  let waitlist: Command["waitlist"];
+  if (input.waitlist !== undefined) {
+    const entry = input.waitlist;
+    if (input.action !== "start" || !entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    const { id, token } = entry as Record<string, unknown>;
+    if (!isWaitlistId(id) || !isWaitlistToken(token)) return null;
+    waitlist = { id, token };
+  }
   return {
     action: input.action as Command["action"],
     expectedVersion: Number(input.expectedVersion),
     ...(input.action === "adjust" ? { minutes: Number(input.minutes) } : {}),
+    ...(waitlist ? { waitlist } : {}),
   };
 }
 

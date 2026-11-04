@@ -10,7 +10,7 @@ export type Machine = (typeof MACHINES)[number] & {
   version: number;
 };
 export type Snapshot = { serverTime: number; machines: Machine[]; waitlist?: WaitlistEntry[] };
-type UpdateResult = { status: "saved" | "conflict" | "failed"; error?: string };
+type UpdateResult = { status: "saved" | "conflict" | "failed"; error?: string; waitlistRemoved?: boolean };
 
 const emptyWaitlist: WaitlistEntry[] = [];
 const emptyMachines: Machine[] = MACHINES.map((machine) => ({ ...machine, endsAt: null, updatedAt: null, version: 0 }));
@@ -77,7 +77,7 @@ export function useLaundry() {
     };
   }, [refresh]);
 
-  async function updateMachine(machine: Machine, action: Command["action"], minutes?: number): Promise<UpdateResult> {
+  async function updateMachine(machine: Machine, action: Command["action"], minutes?: number, waitlist?: { id: string; token: string }): Promise<UpdateResult> {
     if (mutating.current || connection !== "online" || !mounted.current) return { status: "failed", error: "연결과 최신 현황을 확인한 뒤 다시 시도해 주세요." };
     mutating.current = true;
     reading.current?.abort();
@@ -94,9 +94,9 @@ export function useLaundry() {
         method: "POST",
         signal: controller.signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, minutes, expectedVersion: machine.version }),
+        body: JSON.stringify({ action, minutes, expectedVersion: machine.version, waitlist }),
       });
-      const data = await response.json() as Snapshot & { error?: string };
+      const data = await response.json() as Snapshot & { error?: string; waitlistRemoved?: boolean };
       if (!mounted.current) return { status: "failed" };
       if (!response.ok) {
         if (response.status === 409) {
@@ -109,8 +109,9 @@ export function useLaundry() {
         throw new Error(requestError);
       }
       if (id === requestId.current) applySnapshot(data);
-      setMessage(action === "clear" ? `${machine.name}의 등록을 취소했어요.` : action === "start" ? `${machine.name} ${machine.defaultMinutes}분을 등록했어요.` : `${machine.name}의 남은 시간을 ${minutes}분으로 수정했어요.`);
-      return { status: "saved" };
+      const waitlistRemoved = data.waitlistRemoved === true;
+      setMessage(action === "clear" ? `${machine.name}의 등록을 취소했어요.` : action === "start" ? `${machine.name} ${machine.defaultMinutes}분을 등록했어요.${waitlistRemoved ? " 차례가 되어 대기 명단에서 뺐어요." : ""}` : `${machine.name}의 남은 시간을 ${minutes}분으로 수정했어요.`);
+      return { status: "saved", waitlistRemoved };
     } catch {
       if (!mounted.current) return { status: "failed" };
       const error = requestError || "등록 결과를 확인하지 못했어요. 최신 현황을 다시 확인해 주세요.";

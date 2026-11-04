@@ -14,3 +14,17 @@ export const waitlistEntry = sqliteTable("waitlist_entry", {
   ownerHash: text("owner_hash").notNull(),
   createdAt: integer("created_at").notNull(),
 }, (table) => [index("waitlist_entry_location_created_idx").on(table.locationId, table.createdAt)]);
+
+export const eventLog = sqliteTable("event_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  at: integer("at").notNull(),
+  kind: text("kind").notNull(),
+  locationId: text("location_id").notNull(),
+  machineId: text("machine_id"),
+  minutes: integer("minutes"),
+  prevRemainingSec: integer("prev_remaining_sec"),
+}, (table) => [
+  index("event_log_location_at_idx").on(table.locationId, table.at),
+  index("event_log_at_idx").on(table.at),
+  index("event_log_machine_kind_at_idx").on(table.machineId, table.kind, table.at),
+]);
