@@ -186,7 +186,7 @@ test('전체 콜백은 Google 토큰을 보관하지 않고 세션을 교체하�
   };
   t.after(() => { globalThis.fetch = originalFetch; });
   const fullRequest = new Request(callback.url, { headers: { Cookie: `${callback.headers.get('Cookie')}; tmi_session=${oldToken}` } });
-  const response = await finishLogin(fullRequest, db, ENV, NOW);
+  const response = await finishLogin(fullRequest, db, ENV, () => NOW);
   assert.equal(response.headers.get('Location'), `${ORIGIN}/?machine=h3-women-2-w1`);
   assert.equal(exchanges, 1);
   assert.match(response.headers.get('Set-Cookie'), /tmi_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure/);
@@ -196,7 +196,121 @@ test('전체 콜백은 Google 토큰을 보관하지 않고 세션을 교체하�
   assert.equal(db.sqlite.prepare('SELECT token_hash FROM auth_sessions').get().token_hash === await tokenHash(oldToken), false);
   assert.equal(db.sqlite.prepare('SELECT expires_at FROM auth_sessions').get().expires_at, NOW + 30 * 86400000);
   assert.equal(db.sqlite.prepare('SELECT count(*) AS n FROM oauth_states').get().n, 0);
-  const replay = await finishLogin(fullRequest, db, ENV, NOW);
+  const replay = await finishLogin(fullRequest, db, ENV, () => NOW);
   assert.equal(replay.headers.get('Location'), `${ORIGIN}/?authError=invalid_login`);
   assert.equal(exchanges, 1);
+});
+
+test('OAuth 오류 로그는 허용된 코드와 상태만 남기고 토큰 응답 원문을 제외', async (t) => {
+  const db = database(t);
+  const log = t.mock.method(console, 'error', () => {});
+  let failureCode = 'invalid_grant';
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ error: failureCode, error_description: 'secret-email@example.com private-code private-secret', access_token: 'private-token' }, { status: 400 }));
+  for (const expected of ['invalid_grant', null]) {
+    failureCode = expected ?? 'private-token-private-code';
+    const { callback } = await begin(db);
+    const response = await finishLogin(callback, db, ENV, () => NOW);
+    assert.equal(response.headers.get('Location'), `${ORIGIN}/?authError=login_failed`);
+    assert.deepEqual(log.mock.calls.at(-1).arguments, ['OAuth callback failed', {
+      stage: 'token_exchange', errorName: 'Error', tokenStatus: 400, ...(expected ? { oauthError: expected } : {}),
+    }]);
+  }
+});
+
+test('JWT 검증 로그는 claim 값 없이 허용된 claim 이름과 reason만 남김', async (t) => {
+  const db = database(t);
+  const log = t.mock.method(console, 'error', () => {});
+  let idToken;
+  t.mock.method(globalThis, 'fetch', async (url) => String(url).endsWith('/certs')
+    ? Response.json({ keys: [publicJwk] }) : Response.json({ id_token: idToken }));
+  for (const [claims, validationClaim] of [[{ aud: 'wrong-client' }, 'aud'], [{ iat: NOW / 1000 + 1 }, 'iat']]) {
+    const { callback } = await begin(db);
+    const state = db.sqlite.prepare('SELECT * FROM oauth_states').get();
+    idToken = await identity({ nonce: state.nonce, email: 'private-email@gachon.ac.kr', ...claims });
+    const response = await finishLogin(callback, db, ENV, () => NOW);
+    assert.equal(response.headers.get('Location'), `${ORIGIN}/?authError=login_failed`);
+    assert.deepEqual(log.mock.calls.at(-1).arguments, ['OAuth callback failed', {
+      stage: 'token_identity', errorName: 'JWTClaimValidationFailed', validationCode: 'ERR_JWT_CLAIM_VALIDATION_FAILED',
+      validationClaim, validationReason: 'check_failed', tokenStatus: 200,
+    }]);
+  }
+});
+
+test('세션 저장 오류의 원문과 임의 오류 이름 및 코드는 로그에 포함하지 않음', async (t) => {
+  const db = database(t);
+  const { callback } = await begin(db);
+  const state = db.sqlite.prepare('SELECT * FROM oauth_states').get();
+  const idToken = await identity({ nonce: state.nonce });
+  const log = t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async (url) => String(url).endsWith('/certs')
+    ? Response.json({ keys: [publicJwk] }) : Response.json({ id_token: idToken }));
+  const brokenDb = { ...db, batch: async () => { throw Object.assign(new Error('private-email@gachon.ac.kr private-token'), { name: 'private-error-name', code: 'private-code' }); } };
+  const response = await finishLogin(callback, brokenDb, ENV, () => NOW);
+  assert.equal(response.headers.get('Location'), `${ORIGIN}/?authError=login_failed`);
+  assert.deepEqual(log.mock.calls[0].arguments, ['OAuth callback failed', { stage: 'session_write', errorName: 'UnknownError', tokenStatus: 200 }]);
+});
+
+test('OAuth state 저장소 오류도 민감값 없이 단계를 식별', async (t) => {
+  const db = database(t);
+  const { callback } = await begin(db);
+  const log = t.mock.method(console, 'error', () => {});
+  const brokenDb = { ...db, prepare: () => { throw new Error('private SQL and private-email@gachon.ac.kr'); } };
+  await assert.rejects(finishLogin(callback, brokenDb, ENV, () => NOW));
+  assert.deepEqual(log.mock.calls[0].arguments, ['OAuth callback failed', { stage: 'oauth_state', errorName: 'Error' }]);
+});
+
+
+test('허용되지 않은 claim과 reason 문자열은 로그에서 제외', async (t) => {
+  const db = database(t);
+  const { callback } = await begin(db);
+  const log = t.mock.method(console, 'error', () => {});
+  const brokenDb = { ...db, prepare: () => { throw Object.assign(new Error('private error message'), {
+    code: 'ERR_JWT_CLAIM_VALIDATION_FAILED', claim: 'private-email@example.com', reason: 'private-token',
+  }); } };
+  await assert.rejects(finishLogin(callback, brokenDb, ENV, () => NOW));
+  assert.deepEqual(log.mock.calls[0].arguments, ['OAuth callback failed', {
+    stage: 'oauth_state', errorName: 'Error', validationCode: 'ERR_JWT_CLAIM_VALIDATION_FAILED',
+  }]);
+});
+
+
+test('토큰 교환 중 초 경계를 넘어 발급된 JWT를 수신 시각으로 검증하고 세션 시간을 계산', async (t) => {
+  const db = database(t);
+  const { callback } = await begin(db);
+  const state = db.sqlite.prepare('SELECT * FROM oauth_states').get();
+  let now = NOW;
+  const reads = [];
+  const clock = () => { reads.push(now); return now; };
+  const log = t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).endsWith('/certs')) return Response.json({ keys: [publicJwk] });
+    now += 1500;
+    return Response.json({ id_token: await identity({ nonce: state.nonce, iat: Math.floor(now / 1000) }) });
+  });
+  const response = await finishLogin(callback, db, ENV, clock);
+  assert.equal(response.headers.get('Location'), `${ORIGIN}/?machine=h3-women-2-w1`);
+  assert.deepEqual(reads, [NOW, NOW + 1500, NOW + 1500]);
+  assert.equal(log.mock.callCount(), 0);
+  const user = db.sqlite.prepare('SELECT created_at, updated_at FROM tmi_users').get();
+  assert.equal(user.created_at, NOW + 1500);
+  assert.equal(user.updated_at, NOW + 1500);
+  assert.equal(db.sqlite.prepare('SELECT expires_at FROM auth_sessions').get().expires_at, NOW + 1500 + 30 * 86400000);
+});
+
+test('토큰 교환 중 만료된 JWT는 이전 콜백 시각으로 통과시키지 않음', async (t) => {
+  const db = database(t);
+  const { callback } = await begin(db);
+  const state = db.sqlite.prepare('SELECT * FROM oauth_states').get();
+  let now = NOW;
+  const log = t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).endsWith('/certs')) return Response.json({ keys: [publicJwk] });
+    now += 1500;
+    return Response.json({ id_token: await identity({ nonce: state.nonce, exp: NOW / 1000 + 1 }) });
+  });
+  const response = await finishLogin(callback, db, ENV, () => now);
+  assert.equal(response.headers.get('Location'), `${ORIGIN}/?authError=login_failed`);
+  assert.equal(log.mock.calls[0].arguments[1].validationCode, 'ERR_JWT_EXPIRED');
+  assert.equal(log.mock.calls[0].arguments[1].validationClaim, 'exp');
+  assert.equal(db.sqlite.prepare('SELECT count(*) AS n FROM auth_sessions').get().n, 0);
 });
